@@ -15,7 +15,7 @@ class HanyuaDialogDataset(Dataset):
         self.args = args
         self.split = split
 
-        self.tokenizer = AutoTokenizer.from_pretrained(args.pretrained_model)
+        self.tokenizer = tokenizer
         with open(
                 os.path.join(args.data_root_dir, args.data_dir,
                              '.'.join([split, 'jsonl']))) as i:

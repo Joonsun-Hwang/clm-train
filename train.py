@@ -161,6 +161,10 @@ def main():
     parser.add_argument('--grad_clip', type=float, default=5.)
     parser.add_argument('--patient', type=int, default=3)
 
+    # Multi-process Parameters
+    parser.add_argument('--cuda_visible_devices', type=str, default='0,1,2,3,4,5,6,7')
+    parser.add_argument('--extra_memory', type=float, default=1e+10)
+
     parser.add_argument('--random_seed', type=int, default=1234)
 
     args = parser.parse_args()
@@ -184,21 +188,21 @@ def main():
 
     nvidia_smi.nvmlInit()
 
-    if 'CUDA_VISIBLE_DEVICES' not in os.environ:
-        os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3,4,5,6,7'
+    # need to set early in shell command 'torchrun --nproc_per_node LOCAL_WORLD_SIZE'
     if 'LOCAL_WORLD_SIZE' not in os.environ:
         os.envviron['LOCAL_WORLD_SIZE'] = '1'
+    if 'CUDA_VISIBLE_DEVICES' not in os.environ:
+        os.environ['CUDA_VISIBLE_DEVICES'] = args.cuda_visible_devices
     gpu_indices = list(map(int, os.environ['CUDA_VISIBLE_DEVICES'].split(',')))
     os.environ['TRANSFORMERS_CACHE'] = os.path.join(args.cache_root_dir,
                                                     args.pretrained_model,
                                                     args.revision)
 
     free_memory = dict()
-    extra_memory = 1e+10
     for idx in gpu_indices:
         handle = nvidia_smi.nvmlDeviceGetHandleByIndex(idx)
         gpu_memory_info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
-        each_free_memory = int((gpu_memory_info.free - extra_memory) /
+        each_free_memory = int((gpu_memory_info.free - args.extra_memory) /
                                int(os.environ['LOCAL_WORLD_SIZE']))
         if each_free_memory > 0:
             free_memory[idx] = each_free_memory
