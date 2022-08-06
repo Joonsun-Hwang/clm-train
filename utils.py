@@ -5,6 +5,7 @@ import time
 from glob import glob
 
 import numpy as np
+import nvidia_smi
 import torch
 import torch.nn.functional as F
 from sklearn.metrics import confusion_matrix
@@ -25,6 +26,20 @@ def rmfile(file_name: str):
     for fpath in fpaths:
         if os.path.exists(fpath):
             os.remove(fpath)
+
+def calc_gpu_free_memory(gpu_indices, extra_memory) -> dict:
+    nvidia_smi.nvmlInit()
+
+    free_memory = dict()
+    for idx in gpu_indices:
+        handle = nvidia_smi.nvmlDeviceGetHandleByIndex(idx)
+        gpu_memory_info = nvidia_smi.nvmlDeviceGetMemoryInfo(handle)
+        each_free_memory = int((gpu_memory_info.free - extra_memory) /
+                               int(os.environ['LOCAL_WORLD_SIZE']))
+        if each_free_memory > 0:
+            free_memory[idx] = each_free_memory
+
+    return free_memory
 
 
 def calc_perform(logits, labels, criterion=None):

@@ -1,5 +1,9 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 import os
 import json
+from ast import literal_eval
 
 import numpy as np
 import torch
@@ -24,6 +28,7 @@ class HanyuaDialogDataset(Dataset):
         
         self.data = list(map(self._make_item, self.raw_data))
 
+
     def __getitem__(self, idx):
         return self.data[idx]
 
@@ -31,4 +36,11 @@ class HanyuaDialogDataset(Dataset):
         return len(self.data)
 
     def _make_item(self, dialog):
-        return dialog
+        dialog_text = ''
+        for utterance in dialog:
+            if utterance['speaker'] == '사용자':
+                utterance['speaker'] = 'User'
+            elif utterance['speaker'] == 'YUA':
+                utterance['speaker'] = 'Yua'
+            dialog_text += utterance['speaker'] + ': ' + utterance['text'] + '\n'
+        return dialog_text
