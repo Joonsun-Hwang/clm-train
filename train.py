@@ -12,7 +12,7 @@ import evaluate
 from transformers import AutoConfig, AutoTokenizer, AutoModelForCausalLM, AdamW, logging
 from accelerate import Accelerator, init_empty_weights, infer_auto_device_map, load_checkpoint_and_dispatch
 
-from data import get_dataloaders
+from data import HanyuaDataset
 from util import calc_gpu_free_memory, save_checkpoint
 
 
@@ -36,6 +36,9 @@ def train_epoch(args, train_loader, model, optimizer):
 
         # calculate gradient and update model parameters
         args.accelerator.backward(outputs.loss)
+        args.accelerator.clip_grad_norm_(
+            filter(lambda p: p.requires_grad, model.parameters()),
+            args.grad_clip)
         optimizer.step()
 
         # initailize gradient
@@ -43,10 +46,10 @@ def train_epoch(args, train_loader, model, optimizer):
 
         batch_loss = args.accelerator.gather(outputs.loss.to(args.device))
         total_loss += torch.sum(batch_loss).item()
-    return total_loss
+    return total_loss / len(train_loader)
 
 
-def val_epoch(args, val_loader, model, metric):
+def val_epoch(args, val_loader, model, tokenizer, metrics):
     model.eval()
     total_loss = 0
 
@@ -65,21 +68,28 @@ def val_epoch(args, val_loader, model, metric):
         with torch.no_grad():
             outputs = model(**inputs, labels=labels)
 
-        # predictions = outputs.logits.argmax(dim=-1).to(
-        #     args.device_map['lm_head'])
-        # predictions, references = args.accelerator.gather(
-        #     (predictions, labels))
-        # print(predictions, references)
-        # exit()
-        # metric.add_batch(
-        #     predictions=predictions,
-        #     references=references,
-        # )
-        # results = metric.compute()
+        predictions = outputs.logits.argmax(dim=-1)
+        predictions, references = args.accelerator.gather(
+            (predictions.to(args.device),
+             labels.to(args.device)))  # Should load the tensors to gpu:0
+
+        predictions = tokenizer.batch_decode(predictions)
+        references = tokenizer.batch_decode(references)
+
+        results = {}
+        for key, metric in metrics.items():
+            metric.add_batch(
+                predictions=predictions,
+                references=references,
+            )
+            if key == 'bertscore':
+                results[key] = metric.compute(lang='others')
+            else:
+                results[key] = metric.compute()
 
         batch_loss = args.accelerator.gather(outputs.loss.to(args.device))
         total_loss += torch.sum(batch_loss).item()
-    return total_loss  #, results
+    return total_loss / len(val_loader), results
 
 
 def train(args):
@@ -91,8 +101,15 @@ def train(args):
                                    mixed_precision=args.mixed_precision)
     args.device = args.accelerator.device
 
+    tokenizer = AutoTokenizer.from_pretrained(
+        args.pretrained_model,
+        revision=args.revision,
+        cache_dir=os.environ['TRANSFORMERS_CACHE'])
+
     # Datasets
-    train_loader, val_loader = get_dataloaders(args, split='train')
+    hanyua_dataset = HanyuaDataset(args, tokenizer)
+    train_loader = hanyua_dataset.get_dataloaders('train')
+    val_loader = hanyua_dataset.get_dataloaders('validation')
 
     # Model
     config = AutoConfig.from_pretrained(
@@ -130,31 +147,46 @@ def train(args):
     optimizer = AdamW(filter(lambda p: p.requires_grad, model.parameters()),
                       lr=args.learning_rate,
                       weight_decay=args.weight_decay)
-    metric = evaluate.load("bleu")
+    metrics = {
+        'bertscore':
+        evaluate.load('bertscore'),
+        'meteor':
+        evaluate.load('meteor'),
+        'bleurt':
+        evaluate.load('bleurt',
+                      module_type='metric',
+                      checkpoint='bleurt-base-512'),
+    }
 
     # train_loader, val_loader, model, optimizer = args.accelerator.prepare(
     #     train_loader, val_loader, model, optimizer)
 
     # Use accelerator.print to print only on the main process.
+    args.accelerator.print('\n\n[-] Arguments:\n')
     args.accelerator.print(args)
     args.accelerator.register_for_checkpointing(model, optimizer)
 
     # Train
+    args.accelerator.wait_for_everyone()
+    args.accelerator.print('\n\n[-] Start training the model\n')
     start_epoch = args.current_epoch
     for epoch in range(start_epoch, args.max_epoch):
+        args.accelerator.print('[', epoch, '/', args.max_epoch, ']')
         train_loss = train_epoch(args, train_loader, model, optimizer)
-        val_loss = val_epoch(args, val_loader, model, metric)
+        val_loss, scores = val_epoch(args, val_loader, model, tokenizer,
+                                     metrics)
 
         # Print results
-        args.accelerator.print('[', epoch, '/',
-                               args.max_epoch, ']', '\n - Train loss:',
-                               round(train_loss, 4), '\n - Validation loss:',
-                               round(val_loss, 4))
+        args.accelerator.print('- Train loss:', round(train_loss, 4),
+                               '\n - Validation loss:', round(val_loss, 4))
+        for key, score in scores.items():
+            args.accelerator.print('- ', key, '\n', score)
+        args.accelerator.print('\n')
 
         # Append history
         args.train_losses.append(train_loss)
         args.val_losses.append(val_loss)
-        # args.val_scores.append(score)
+        args.val_scores.append(scores)
 
         # Save checkpoint
         args.accelerator.wait_for_everyone()
@@ -163,7 +195,7 @@ def train(args):
 
         args.current_epoch += 1
         if args.waiting > args.patient:
-            break
+            exit()
 
 
 def main():
@@ -191,7 +223,7 @@ def main():
     # Training Parameters
     parser.add_argument('--max_epoch', type=int, default=100)
     parser.add_argument('--batch_size', type=int,
-                        default=1)  # single process: Max 4; 2 process: Max 1
+                        default=1)  # 1 process: Max 4; 2 process: Max 1
     parser.add_argument('--loss_type', type=str, default='BCE')
     parser.add_argument('--learning_rate', type=float, default=1e-6)
     parser.add_argument('--weight_decay', type=float, default=0.)
@@ -206,8 +238,7 @@ def main():
     parser.add_argument('--cuda_visible_devices',
                         type=str,
                         default='0,1,2,3,4,5,6,7')
-    # parser.add_argument('--extra_memory', type=float, default=4.7e+10)
-    parser.add_argument('--extra_memory', type=float, default=4.3e+10)
+    parser.add_argument('--extra_memory', type=float, default=4.0e+10)
 
     parser.add_argument('--cpu', action='store_true')
     parser.add_argument('--random_seed', type=int, default=1234)
