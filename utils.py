@@ -3,10 +3,10 @@ import os
 import shutil
 from glob import glob
 
+import accelerate
 import numpy as np
 import nvidia_smi
 import torch
-import accelerate
 
 
 def mkdir(dir_name: str):
@@ -41,7 +41,7 @@ def calc_gpu_free_memory(gpu_indices, extra_memory) -> dict:
     return free_memory
 
 
-def save_checkpoint(args: argparse.Namespace, model, optimizer):
+def save_checkpoint(args: argparse.Namespace, model):
     ckpt_dir = os.path.join(args.data_root_dir, 'checkpoint')
     mkdir(ckpt_dir)
 
@@ -51,5 +51,8 @@ def save_checkpoint(args: argparse.Namespace, model, optimizer):
 
     if args.val_losses[-1] <= min(args.val_losses):
         args.waiting = 0
-        args.accelerator.save_state(
-            os.path.join(ckpt_dir, 'BEST_' + args.checkpoint))
+        filename = 'BEST_' + args.checkpoint + '.ckpt'
+
+        unwrapped_model = args.accelerator.unwrap_model(model)
+        args.accelerator.save(unwrapped_model.state_dict(), os.path.join(ckpt_dir, filename))
+        print('\t[!] The best checkpoint is updated.')

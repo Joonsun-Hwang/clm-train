@@ -1,19 +1,18 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import os
 import json
+import os
 from ast import literal_eval
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
-from datasets import load_dataset
 from accelerate import DistributedType
+from datasets import load_dataset
+from torch.utils.data import DataLoader
 
 
 class HanyuaDataset():
-
     def __init__(self, args, tokenizer):
         self.args = args
 

@@ -1,19 +1,22 @@
 import argparse
 import os
-import sys
 import random
+import sys
 import time
 
-from tqdm import tqdm
+import accelerate
+import evaluate
 import numpy as np
 import torch
 import torch.nn as nn
-import evaluate
-from transformers import AutoConfig, AutoTokenizer, AutoModelForCausalLM, AdamW, logging
-from accelerate import Accelerator, init_empty_weights, infer_auto_device_map, load_checkpoint_and_dispatch
+from accelerate import (Accelerator, infer_auto_device_map, init_empty_weights,
+                        load_checkpoint_and_dispatch)
+from tqdm import tqdm
+from transformers import (AdamW, AutoConfig, AutoModelForCausalLM,
+                          AutoTokenizer, logging)
 
-from data import HanyuaDataset
-from util import calc_gpu_free_memory, save_checkpoint
+from dataset import HanyuaDataset
+from utils import calc_gpu_free_memory, save_checkpoint
 
 
 def train_epoch(args, train_loader, model, optimizer):
@@ -155,7 +158,7 @@ def train(args):
         'bleurt':
         evaluate.load('bleurt',
                       module_type='metric',
-                      checkpoint='bleurt-base-512'),
+                      checkpoint='bleurt-large-512'),
     }
 
     # train_loader, val_loader, model, optimizer = args.accelerator.prepare(
@@ -191,7 +194,7 @@ def train(args):
         # Save checkpoint
         args.accelerator.wait_for_everyone()
         if args.accelerator.is_local_main_process:
-            save_checkpoint(args, model, optimizer)
+            save_checkpoint(args, model)
 
         args.current_epoch += 1
         if args.waiting > args.patient:
@@ -253,14 +256,16 @@ def main():
     args.val_scores = []
     args.waiting = 0
 
-    random.seed(args.random_seed)
-    np.random.seed(args.random_seed)
-    os.environ['PYTHONHASHSEED'] = str(args.random_seed)
-    torch.manual_seed(args.random_seed)
-    torch.cuda.manual_seed(args.random_seed)
-    torch.cuda.manual_seed_all(args.random_seed)  # if use multi-gpu
-    torch.backends.cudnn.deterministic = True
-    torch.backends.cudnn.benchmark = False
+    # Reproduciblity
+    # random.seed(args.random_seed)
+    # np.random.seed(args.random_seed)
+    # os.environ['PYTHONHASHSEED'] = str(args.random_seed)
+    # torch.manual_seed(args.random_seed)
+    # torch.cuda.manual_seed(args.random_seed)
+    # torch.cuda.manual_seed_all(args.random_seed)  # if use multi-gpu
+    # torch.backends.cudnn.deterministic = True
+    # torch.backends.cudnn.benchmark = False
+    accelerate.utils.set_seed(args.random_seed)
 
     # need to set early in shell command 'torchrun --nproc_per_node LOCAL_WORLD_SIZE'
     if 'LOCAL_WORLD_SIZE' not in os.environ:

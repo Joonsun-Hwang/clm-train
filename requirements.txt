@@ -7,9 +7,13 @@ asttokens==2.0.5
 astunparse==1.6.3
 async-timeout==4.0.2
 attrs==21.4.0
+bert-score==0.3.11
+BLEURT @ git+https://github.com/google-research/bleurt.git@c6f2375c7c178e1480840cf27cb9e2af851394f9
 cachetools==5.2.0
 certifi @ file:///opt/conda/conda-bld/certifi_1655968806487/work/certifi
 charset-normalizer==2.0.12
+click==8.1.3
+cycler==0.11.0
 datasets==2.3.2
 deepspeed==0.6.7
 dill==0.3.5.1
@@ -17,6 +21,7 @@ evaluate==0.2.2
 executing==0.9.1
 filelock==3.7.1
 flatbuffers==1.12
+fonttools==4.34.4
 frozenlist==1.3.0
 fsspec==2022.5.0
 gast==0.4.0
@@ -33,14 +38,17 @@ iniconfig==1.1.1
 joblib==1.1.0
 keras==2.9.0
 Keras-Preprocessing==1.1.2
+kiwisolver==1.4.4
 lazy-object-proxy==1.7.1
 libclang==14.0.1
 littleutils==0.2.2
 Markdown==3.3.7
+matplotlib==3.5.2
 mccabe==0.7.0
 multidict==6.0.2
 multiprocess==0.70.13
 ninja==1.10.2.3
+nltk==3.7
 numpy==1.23.0
 nvidia-ml-py3==7.352.0
 nvidia-smi==0.1.3
@@ -72,6 +80,7 @@ responses==0.18.0
 rsa==4.8
 scikit-learn==1.1.1
 scipy==1.8.1
+sentencepiece==0.1.97
 six==1.16.0
 sorcery==0.2.2
 tensorboard==2.9.1
@@ -81,6 +90,7 @@ tensorflow==2.9.1
 tensorflow-estimator==2.9.0
 tensorflow-io-gcs-filesystem==0.26.0
 termcolor==1.1.0
+tf-slim==1.1.0
 threadpoolctl==3.1.0
 tokenizers==0.12.1
 tomli==2.0.1
