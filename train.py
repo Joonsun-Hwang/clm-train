@@ -180,11 +180,10 @@ def train(args):
                                      metrics)
 
         # Print results
-        args.accelerator.print('- Train loss:', round(train_loss, 4),
+        args.accelerator.print(' - Train loss:', round(train_loss, 4),
                                '\n - Validation loss:', round(val_loss, 4))
         for key, score in scores.items():
-            args.accelerator.print('- ', key, '\n', score)
-        args.accelerator.print('\n')
+            args.accelerator.print(' - ', key, '\n', score)
 
         # Append history
         args.train_losses.append(train_loss)
@@ -234,16 +233,16 @@ def main():
     parser.add_argument('--patient', type=int, default=3)
 
     # Multi-process Parameters
-    parser.add_argument('--mixed_precision',
-                        type=str,
-                        default='no',
-                        choices=['no', 'fp16', 'bf16'])
     parser.add_argument('--cuda_visible_devices',
                         type=str,
                         default='0,1,2,3,4,5,6,7')
     parser.add_argument('--extra_memory', type=float, default=4.0e+10)
-
+    parser.add_argument('--mixed_precision',
+                        type=str,
+                        default='no',
+                        choices=['no', 'fp16', 'bf16'])
     parser.add_argument('--cpu', action='store_true')
+    
     parser.add_argument('--random_seed', type=int, default=1234)
 
     args = parser.parse_args()
