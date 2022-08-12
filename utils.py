@@ -55,4 +55,4 @@ def save_checkpoint(args: argparse.Namespace, model):
 
         unwrapped_model = args.accelerator.unwrap_model(model)
         args.accelerator.save(unwrapped_model.state_dict(), os.path.join(ckpt_dir, filename))
-        print('\t[!] The best checkpoint is updated.\n\n')
+        print('\t[!] The best checkpoint is updated.')

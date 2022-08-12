@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 import argparse
 import os
 import random
@@ -140,7 +143,7 @@ def main():
     # Multi-process Parameters
     parser.add_argument('--mixed_precision',
                         type=str,
-                        default='no',
+                        default='fp16',
                         choices=['no', 'fp16', 'bf16'])
     parser.add_argument('--cpu', action='store_true')
 

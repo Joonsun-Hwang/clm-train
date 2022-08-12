@@ -1,3 +1,6 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 import argparse
 import os
 import random
@@ -199,6 +202,8 @@ def train(args):
         if args.waiting > args.patient:
             exit()
 
+        args.accelerator.print('\n\n')
+
 
 def main():
     # !torchrun --nproc_per_node 4 train.py
@@ -227,8 +232,8 @@ def main():
     parser.add_argument('--batch_size', type=int,
                         default=1)  # 1 process: Max 4; 2 process: Max 1
     parser.add_argument('--loss_type', type=str, default='BCE')
-    parser.add_argument('--learning_rate', type=float, default=1e-6)
-    parser.add_argument('--weight_decay', type=float, default=0.)
+    parser.add_argument('--learning_rate', type=float, default=1e-7)
+    parser.add_argument('--weight_decay', type=float, default=1e-2)
     parser.add_argument('--grad_clip', type=float, default=5.)
     parser.add_argument('--patient', type=int, default=3)
 
@@ -242,7 +247,7 @@ def main():
                         default='no',
                         choices=['no', 'fp16', 'bf16'])
     parser.add_argument('--cpu', action='store_true')
-    
+
     parser.add_argument('--random_seed', type=int, default=1234)
 
     args = parser.parse_args()
