@@ -34,6 +34,7 @@ def train_epoch(args, train_loader, model, optimizer):
                  file=sys.stdout,
                  disable=not args.accelerator.is_local_main_process)):
         # Fetch inputs and labels
+        # Do not forward the batch to any function. If then, it would be occur "RuntimeError" same device issue.
         inputs = dict(map(lambda x: (x[0], x[1][:, :-1]), batch.items()))
         labels = batch.input_ids[:, 1:].to(args.device_map['lm_head'])
 
@@ -232,8 +233,8 @@ def main():
     parser.add_argument('--batch_size', type=int,
                         default=1)  # 1 process: Max 4; 2 process: Max 1
     parser.add_argument('--loss_type', type=str, default='BCE')
-    parser.add_argument('--learning_rate', type=float, default=1e-7)
-    parser.add_argument('--weight_decay', type=float, default=1e-2)
+    parser.add_argument('--learning_rate', type=float, default=5e-6)
+    parser.add_argument('--weight_decay', type=float, default=1e-1)
     parser.add_argument('--grad_clip', type=float, default=5.)
     parser.add_argument('--patient', type=int, default=3)
 
