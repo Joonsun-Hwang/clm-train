@@ -32,6 +32,7 @@ class HanyuaDataset():
                                         os.path.join(args.data_root_dir,
                                                      'test.jsonl')
                                     })
+        # If you change the function in dataset.map() after you run the previous code once, you should remove cache huggingface/datasets
         self.tokenized_dataset = self.dataset.map(
             self._tokenize_function,
             batched=True,

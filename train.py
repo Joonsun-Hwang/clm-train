@@ -182,8 +182,7 @@ def train(args):
         evaluate.load('meteor'),
         'bleurt':
         evaluate.load('bleurt',
-                      module_type='metric',
-                      checkpoint='bleurt-large-512'),
+                      'bleurt-large-512'),
     }
 
     # Use accelerator.print to print only on the main process.
@@ -262,7 +261,7 @@ def main():
     parser.add_argument('--cuda_visible_devices',
                         type=str,
                         default='0,1,2,3,4,5,6,7')
-    parser.add_argument('--extra_memory', type=float, default=4.3e+10)
+    parser.add_argument('--extra_memory', type=float, default=4.1e+10)
     parser.add_argument('--mixed_precision',
                         type=str,
                         default='no',
