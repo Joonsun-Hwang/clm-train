@@ -133,9 +133,9 @@ def train(args):
         cache_dir=os.environ['TRANSFORMERS_CACHE'])
 
     with init_empty_weights():
-        if model_type == 'CausalLM':
+        if args.model_type == 'CausalLM':
             model = AutoModelForCausalLM.from_config(config)
-        elif model_type = 'ConditionalGeneration':
+        elif args.model_type == 'ConditionalGeneration':
             model = AutoModelForPreTraining.from_config(config)
 
     names_module_classes = set()
@@ -153,7 +153,7 @@ def train(args):
         no_split_module_classes=list(names_module_classes),
         dtype=torch.float32)
 
-    if model_type == 'CausalLM':
+    if args.model_type == 'CausalLM':
         model = AutoModelForCausalLM.from_pretrained(
             args.pretrained_model,
             revision=args.revision,
@@ -161,7 +161,7 @@ def train(args):
             # torch_dtype='auto',  # There is a bug for 'facebook/opt'
             low_cpu_mem_usage=True,
             cache_dir=os.environ['TRANSFORMERS_CACHE'])
-    elif model_type = 'ConditionalGeneration':
+    elif args.model_type == 'ConditionalGeneration':
         model = AutoModelForPreTraining.from_pretrained(
             args.pretrained_model,
             revision=args.revision,
@@ -236,7 +236,7 @@ def main():
     parser.add_argument('--cache_root_dir',
                         type=str,
                         default='/home/jsunhwang/huggingface_models')
-    parser.add_argument('--max_len', type=int, default=2048)
+    parser.add_argument('--max_len', type=int, default=1024)
 
     # Model Parameters
     parser.add_argument('--model_type', type=str, default='CausalLM')
@@ -253,16 +253,16 @@ def main():
                         default=512)
     parser.add_argument('--max_batch_size_per_gpu', type=int, default=1)  # 1 process: Max 4; 2 process: Max 1
     parser.add_argument('--loss_type', type=str, default='BCE')
-    parser.add_argument('--learning_rate', type=float, default=5e-6)
+    parser.add_argument('--learning_rate', type=float, default=5e-5)
     parser.add_argument('--weight_decay', type=float, default=1e-1)
-    parser.add_argument('--grad_clip', type=float, default=5.)
+    parser.add_argument('--grad_clip', type=float, default=10.)
     parser.add_argument('--patient', type=int, default=3)
 
     # Multi-process Parameters
     parser.add_argument('--cuda_visible_devices',
                         type=str,
                         default='0,1,2,3,4,5,6,7')
-    parser.add_argument('--extra_memory', type=float, default=4.0e+10)
+    parser.add_argument('--extra_memory', type=float, default=4.3e+10)
     parser.add_argument('--mixed_precision',
                         type=str,
                         default='no',

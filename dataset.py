@@ -41,7 +41,7 @@ class HanyuaDataset():
         # max_length=None => use the model max length (it's actually the default)
         outputs = self.tokenizer(examples['input_text'],
                                  truncation=True,
-                                 max_length=None)
+                                 max_length=self.args.max_len)
         return outputs
 
     def _collate_fn(self, examples):
@@ -53,6 +53,8 @@ class HanyuaDataset():
                                       return_tensors="pt")
         return self.tokenizer.pad(examples,
                                   padding="longest",
+                                #   padding="max_length",
+                                #   max_length=self.args.max_len,  # for test, check args.extra_memory
                                   return_tensors="pt")
 
     def get_dataloaders(self, split):
