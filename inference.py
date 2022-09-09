@@ -36,10 +36,12 @@ def inference(args):
         # torch_dtype='auto',  # There is a bug for 'facebook/opt'
         low_cpu_mem_usage=True,
         cache_dir=os.environ['TRANSFORMERS_CACHE'])
-    model.load_state_dict(
-        torch.load(os.path.join(args.data_root_dir, 'checkpoint',
-                                'BEST_' + args.checkpoint + '.ckpt'),
-                   map_location=args.device))
+
+    if args.saved_model:
+        model.load_state_dict(
+            torch.load(os.path.join(args.data_dir, 'checkpoint',
+                                    'BEST_' + args.saved_model + '.ckpt'),
+                    map_location=args.device))
 
     model = args.accelerator.prepare(model)
     args.accelerator.print('Model Loading Time:', time.time() - model_load_time)
@@ -58,9 +60,9 @@ def inference(args):
         inference_time = time.time()
 
         input_ids = tokenizer.encode(input_text, return_tensors='pt').to(args.device)
-        # outputs = model.generate(input_ids, num_beams=5, no_repeat_ngram_size=2)
+        outputs = model.generate(input_ids, num_beams=5, no_repeat_ngram_size=2)
         # outputs = model.generate(input_ids, do_sample=True, top_k=50, no_repeat_ngram_size=2)
-        outputs = model.generate(input_ids, do_sample=True, top_k=0, top_p=0.9, no_repeat_ngram_size=2)
+        # outputs = model.generate(input_ids, do_sample=True, top_k=0, top_p=0.9, no_repeat_ngram_size=2)
         output_text = tokenizer.batch_decode(outputs, skip_special_tokens=True)[0]
         output_text = output_text.replace(input_text, '', 1).strip()
 
@@ -72,10 +74,7 @@ def main():
     parser = argparse.ArgumentParser()
 
     # Data Parameters
-    parser.add_argument('--data_root_dir', type=str, default='data')
-    parser.add_argument('--data_dir',
-                        type=str,
-                        default='hanyua_augmented_dialog')
+    parser.add_argument('--data_dir', type=str, default='data')
     parser.add_argument('--cache_root_dir',
                         type=str,
                         default='/home/jsunhwang/huggingface_models')
@@ -84,9 +83,9 @@ def main():
     # Model Parameters
     parser.add_argument('--pretrained_model',
                         type=str,
-                        default='kakaobrain/kogpt')
-    parser.add_argument('--revision', type=str, default='KoGPT6B-ryan1.5b')
-    parser.add_argument('checkpoint', type=str)
+                        default='skt/ko-gpt-trinity-1.2B-v0.5')
+    parser.add_argument('--revision', type=str, default='main')
+    parser.add_argument('--saved_model', type=str, default=None)
 
     # Multi-process Parameters
     parser.add_argument('--mixed_precision',

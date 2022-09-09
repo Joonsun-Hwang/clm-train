@@ -14,7 +14,7 @@ from accelerate import Accelerator
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, logging
 
-from dataset import HanyuaDataset
+from dataset import CausalDataset
 
 
 def test_epoch(args, test_loader, model, tokenizer, metrics):
@@ -36,13 +36,20 @@ def test_epoch(args, test_loader, model, tokenizer, metrics):
         with torch.no_grad():
             outputs = model(**inputs, labels=labels)
 
+        # Get predictions and references
         predictions = outputs.logits.argmax(dim=-1)
-        predictions, references = args.accelerator.gather(
-            (predictions.to(args.device),
-             labels.to(args.device)))  # Should load the tensors to gpu:0
+        if args.model_parallel:
+            predictions = predictions.to(list(args.device_map.values())[0])
+            labels = labels.to(list(args.device_map.values())[0])
+            outputs = dict(map(lambda x: (x[0], x[1].to(list(args.device_map.values())[0])), outputs.items()))
 
-        predictions = tokenizer.batch_decode(predictions)
-        references = tokenizer.batch_decode(references)
+        predictions = args.accelerator.pad_across_processes(predictions.to(args.device), dim=1, pad_index=tokenizer.pad_token_id)  # dim=-1 is not work
+        labels = args.accelerator.pad_across_processes(labels.to(args.device), dim=1, pad_index=tokenizer.pad_token_id)
+        predictions, references = args.accelerator.gather(
+            (predictions, labels))
+
+        predictions = tokenizer.batch_decode(predictions, skip_special_tokens=True)
+        references = tokenizer.batch_decode(references, skip_special_tokens=True)
 
         results = {}
         for key, metric in metrics.items():
@@ -72,8 +79,8 @@ def test(args):
         cache_dir=os.environ['TRANSFORMERS_CACHE'])
 
     # Datasets
-    hanyua_dataset = HanyuaDataset(args, tokenizer)
-    test_loader = hanyua_dataset.get_dataloaders('test')
+    causal_dataset = CausalDataset(args, tokenizer)
+    test_loader = causal_dataset.get_dataloaders('test')
 
     # Model
     model = AutoModelForCausalLM.from_pretrained(
@@ -82,10 +89,12 @@ def test(args):
         # torch_dtype='auto',  # There is a bug for 'facebook/opt'
         low_cpu_mem_usage=True,
         cache_dir=os.environ['TRANSFORMERS_CACHE'])
-    model.load_state_dict(
-        torch.load(os.path.join(args.data_root_dir, 'checkpoint',
-                                'BEST_' + args.checkpoint + '.ckpt'),
-                   map_location=args.device))
+
+    if args.saved_model:
+        model.load_state_dict(
+            torch.load(os.path.join(args.data_dir, 'checkpoint',
+                                    'BEST_' + args.saved_model + '.ckpt'),
+                    map_location=args.device))
 
     metrics = {
         'bertscore':
@@ -120,10 +129,7 @@ def main():
     parser = argparse.ArgumentParser()
 
     # Data Parameters
-    parser.add_argument('--data_root_dir', type=str, default='data')
-    parser.add_argument('--data_dir',
-                        type=str,
-                        default='hanyua_augmented_dialog')
+    parser.add_argument('--data_dir', type=str, default='data')
     parser.add_argument('--cache_root_dir',
                         type=str,
                         default='/home/jsunhwang/huggingface_models')
@@ -134,7 +140,7 @@ def main():
                         type=str,
                         default='kakaobrain/kogpt')
     parser.add_argument('--revision', type=str, default='KoGPT6B-ryan1.5b')
-    parser.add_argument('checkpoint', type=str)
+    parser.add_argument('--saved_model', type=str, default=None)
 
     # Testing Parameters
     parser.add_argument('--batch_size', type=int,

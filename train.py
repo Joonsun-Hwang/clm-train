@@ -15,14 +15,15 @@ import torch.nn as nn
 from accelerate import (Accelerator, DistributedType, infer_auto_device_map,
                         init_empty_weights, load_checkpoint_and_dispatch)
 from tqdm import tqdm
-from transformers import (AdamW, AutoConfig, AutoModelForCausalLM,
-                          AutoModelForPreTraining, AutoTokenizer, logging)
+from transformers import (AutoConfig, AutoModelForCausalLM,
+                          AutoModelForPreTraining, AutoTokenizer,
+                          get_scheduler, logging)
 
-from dataset import HanyuaDataset
+from dataset import CausalDataset
 from utils import calc_gpu_free_memory, save_checkpoint
 
 
-def train_epoch(args, train_loader, model, optimizer):
+def train_epoch(args, train_loader, model, optimizer, scheduler):
     model.train()
     total_loss = 0
 
@@ -34,24 +35,38 @@ def train_epoch(args, train_loader, model, optimizer):
                  file=sys.stdout,
                  disable=not args.accelerator.is_local_main_process)):
         # Fetch inputs and labels
-        # Do not forward the batch to any function. If then, it would be occur "RuntimeError" same device issue.
         inputs = dict(map(lambda x: (x[0], x[1][:, :-1]), batch.items()))
-        labels = batch.input_ids[:, 1:].to(args.device_map['lm_head'])
+        labels = batch.input_ids[:, 1:]
 
-        # forward inputs and calculate loss
+        if args.model_parallel:
+            inputs = dict(
+                map(
+                    lambda x:
+                    (x[0], x[1].to(list(args.device_map.values())[0])),
+                    inputs.items()))
+            labels = labels.to(list(args.device_map.values())[-1])
+
+        # Forward inputs and calculate loss
         outputs = model(**inputs, labels=labels)
 
-        # calculate gradient
+        # Calculate gradient
         args.accelerator.backward(outputs.loss)
+        if args.model_parallel:
+            outputs = dict(
+                map(
+                    lambda x:
+                    (x[0], x[1].to(list(args.device_map.values())[0])),
+                    outputs.items()))
 
-        # update model parameters accumulatively
+        # Update model parameters accumulatively
         if step % args.gradient_accumulation_steps == 0:
             args.accelerator.clip_grad_norm_(
                 filter(lambda p: p.requires_grad, model.parameters()),
                 args.grad_clip)
             optimizer.step()
+            scheduler.step()
 
-            # initailize gradient
+            # Initailize gradient
             optimizer.zero_grad()
 
         batch_loss = args.accelerator.gather(outputs.loss.to(args.device))
@@ -72,20 +87,45 @@ def val_epoch(args, val_loader, model, tokenizer, metrics):
                  disable=not args.accelerator.is_local_main_process)):
         # Fetch inputs and labels
         inputs = dict(map(lambda x: (x[0], x[1][:, :-1]), batch.items()))
-        labels = batch.input_ids[:, 1:].to(args.device_map['lm_head'])
+        labels = batch.input_ids[:, 1:]
 
-        # forward inputs and calculate loss
+        if args.model_parallel:
+            inputs = dict(
+                map(
+                    lambda x:
+                    (x[0], x[1].to(list(args.device_map.values())[0])),
+                    inputs.items()))
+            labels = labels.to(list(args.device_map.values())[-1])
+
+        # Forward inputs and calculate loss
         with torch.no_grad():
             outputs = model(**inputs, labels=labels)
 
+        # Get predictions and references
         predictions = outputs.logits.argmax(dim=-1)
+        if args.model_parallel:
+            predictions = predictions.to(list(args.device_map.values())[0])
+            labels = labels.to(list(args.device_map.values())[0])
+            outputs = dict(
+                map(
+                    lambda x:
+                    (x[0], x[1].to(list(args.device_map.values())[0])),
+                    outputs.items()))
+
+        # dim=-1 is not work
+        predictions = args.accelerator.pad_across_processes(
+            predictions, dim=1, pad_index=tokenizer.pad_token_id)
+        labels = args.accelerator.pad_across_processes(
+            labels, dim=1, pad_index=tokenizer.pad_token_id)
         predictions, references = args.accelerator.gather(
-            (predictions.to(args.device),
-             labels.to(args.device)))  # Should load the tensors to gpu:0
+            (predictions.contiguous(), labels.contiguous()))
 
-        predictions = tokenizer.batch_decode(predictions)
-        references = tokenizer.batch_decode(references)
+        predictions = tokenizer.batch_decode(predictions,
+                                             skip_special_tokens=True)
+        references = tokenizer.batch_decode(references,
+                                            skip_special_tokens=True)
 
+        # Calculate scores
         results = {}
         for key, metric in metrics.items():
             metric.add_batch(
@@ -94,10 +134,12 @@ def val_epoch(args, val_loader, model, tokenizer, metrics):
             )
             if key == 'bertscore':
                 results[key] = metric.compute(lang='others')
+                del results[key]['hashcode']
+                results[key] = {k: sum(v)/len(v) for k, v in results[key].items()}
             else:
                 results[key] = metric.compute()
 
-        batch_loss = args.accelerator.gather(outputs.loss.to(args.device))
+        batch_loss = args.accelerator.gather(outputs.loss)
         total_loss += torch.sum(batch_loss).item()
     return total_loss / len(val_loader), results
 
@@ -106,84 +148,137 @@ def train(args):
     args.current_epoch = 0
     args.current_iter = 0
 
-    # Accelerator
-    args.accelerator = Accelerator(cpu=args.cpu,
-                                   mixed_precision=args.mixed_precision)
-    args.device = args.accelerator.device
-    
-    args.gradient_accumulation_steps = 1
-    if args.batch_size > args.max_batch_size_per_gpu and args.accelerator.distributed_type != DistributedType.TPU:
-        args.gradient_accumulation_steps = args.batch_size // args.max_batch_size_per_gpu
-        args.batch_size = args.max_batch_size_per_gpu
-
+    # Tokenizer
     tokenizer = AutoTokenizer.from_pretrained(
         args.pretrained_model,
         revision=args.revision,
         cache_dir=os.environ['TRANSFORMERS_CACHE'])
 
     # Datasets
-    hanyua_dataset = HanyuaDataset(args, tokenizer)
-    train_loader = hanyua_dataset.get_dataloaders('train')
-    val_loader = hanyua_dataset.get_dataloaders('validation')
+    with args.accelerator.main_process_first():
+        causal_dataset = CausalDataset(args, tokenizer)
+    train_loader = causal_dataset.get_dataloaders('train')
+    val_loader = causal_dataset.get_dataloaders('validation')
 
-    # Model
-    config = AutoConfig.from_pretrained(
+    args.config = AutoConfig.from_pretrained(
         args.pretrained_model,
         revision=args.revision,
         cache_dir=os.environ['TRANSFORMERS_CACHE'])
 
-    with init_empty_weights():
+    # Model
+    if args.model_parallel:
+        with init_empty_weights():
+            if args.model_type == 'CausalLM':
+                model = AutoModelForCausalLM.from_config(args.config)
+            elif args.model_type == 'ConditionalGeneration':
+                model = AutoModelForPreTraining.from_config(args.config)
+
+        names_module_classes = set()
+        for module in model.modules():
+            if type(module) == torch.nn.ModuleList:
+                names_module_classes.update([
+                    submodule.__class__.__name__
+                    for submodule in module.children()
+                ])
+
+        free_memory = calc_gpu_free_memory(args.gpu_indices, args.extra_memory)
+        args.device_map = infer_auto_device_map(
+            model,
+            max_memory=free_memory,
+            no_split_module_classes=list(names_module_classes),
+            dtype=torch.float32)
+
         if args.model_type == 'CausalLM':
-            model = AutoModelForCausalLM.from_config(config)
+            model = AutoModelForCausalLM.from_pretrained(
+                args.pretrained_model,
+                revision=args.revision,
+                device_map=args.device_map,
+                low_cpu_mem_usage=True,
+                cache_dir=os.environ['TRANSFORMERS_CACHE'])
         elif args.model_type == 'ConditionalGeneration':
-            model = AutoModelForPreTraining.from_config(config)
+            model = AutoModelForPreTraining.from_pretrained(
+                args.pretrained_model,
+                revision=args.revision,
+                device_map=args.device_map,
+                low_cpu_mem_usage=True,
+                cache_dir=os.environ['TRANSFORMERS_CACHE'])
+    else:
+        if args.model_type == 'CausalLM':
+            model = AutoModelForCausalLM.from_pretrained(
+                args.pretrained_model,
+                revision=args.revision,
+                low_cpu_mem_usage=True,
+                cache_dir=os.environ['TRANSFORMERS_CACHE'])
+        elif args.model_type == 'ConditionalGeneration':
+            model = AutoModelForPreTraining.from_pretrained(
+                args.pretrained_model,
+                revision=args.revision,
+                low_cpu_mem_usage=True,
+                cache_dir=os.environ['TRANSFORMERS_CACHE'])
 
-    names_module_classes = set()
-    for module in model.modules():
-        if type(module) == torch.nn.ModuleList:
-            names_module_classes.update([
-                submodule.__class__.__name__
-                for submodule in module.children()
-            ])
+    if args.saved_model:
+        model.load_state_dict(
+            torch.load(
+                os.path.join(args.data_root_dir, 'checkpoint',
+                             'BEST_' + args.saved_model + '.ckpt')))
+        args.accelerator.print('[!] Saved checkpoint is loaded')
 
-    free_memory = calc_gpu_free_memory(args.gpu_indices, args.extra_memory)
-    args.device_map = infer_auto_device_map(
-        model,
-        max_memory=free_memory,
-        no_split_module_classes=list(names_module_classes),
-        dtype=torch.float32)
+    if args.accelerator.distributed_type == DistributedType.TPU:
+        model.tie_weights()
 
-    if args.model_type == 'CausalLM':
-        model = AutoModelForCausalLM.from_pretrained(
-            args.pretrained_model,
-            revision=args.revision,
-            device_map=args.device_map,
-            # torch_dtype='auto',  # There is a bug for 'facebook/opt'
-            low_cpu_mem_usage=True,
-            cache_dir=os.environ['TRANSFORMERS_CACHE'])
-    elif args.model_type == 'ConditionalGeneration':
-        model = AutoModelForPreTraining.from_pretrained(
-            args.pretrained_model,
-            revision=args.revision,
-            device_map=args.device_map,
-            # torch_dtype='auto',  # There is a bug for 'facebook/opt'
-            low_cpu_mem_usage=True,
-            cache_dir=os.environ['TRANSFORMERS_CACHE'])
+    # Loss and Scheduler
+    no_decay = ["bias", "LayerNorm.weight"]
+    optimizer_grouped_parameters = [
+        {
+            "params": [
+                p for n, p in model.named_parameters()
+                if not any(nd in n for nd in no_decay)
+            ],
+            "weight_decay":
+            args.weight_decay,
+        },
+        {
+            "params": [
+                p for n, p in model.named_parameters()
+                if any(nd in n for nd in no_decay)
+            ],
+            "weight_decay":
+            0.0,
+        },
+    ]
+    optimizer_cls = (
+        torch.optim.AdamW
+        if args.accelerator.state.deepspeed_plugin is None or "optimizer"
+        not in args.accelerator.state.deepspeed_plugin.deepspeed_config else
+        accelerate.utils.DummyOptim)
+    optimizer = optimizer_cls(optimizer_grouped_parameters,
+                              lr=args.learning_rate)
 
+    if args.accelerator.state.distributed_type == DistributedType.DEEPSPEED:
+        scheduler = accelerate.utils.DummyScheduler(
+            optimizer,
+            total_num_steps=(len(train_loader) * args.max_epoch) //
+            args.gradient_accumulation_steps,
+            warmup_num_steps=args.num_warmup_steps)
+    else:
+        scheduler = get_scheduler(
+            name=args.scheduler_type,
+            optimizer=optimizer,
+            num_warmup_steps=args.num_warmup_steps,
+            num_training_steps=(len(train_loader) * args.max_epoch) //
+            args.gradient_accumulation_steps)
 
-    # Loss and Metric
-    optimizer = AdamW(filter(lambda p: p.requires_grad, model.parameters()),
-                      lr=args.learning_rate,
-                      weight_decay=args.weight_decay)
-    metrics = {
-        'bertscore':
-        evaluate.load('bertscore'),
-        'meteor':
-        evaluate.load('meteor'),
-        'bleurt':
-        evaluate.load('bleurt',
-                      'bleurt-large-512'),
-    }
+    # Metrics
+    with args.accelerator.main_process_first():
+        metrics = {
+            'bertscore': evaluate.load('bertscore'),
+            'meteor': evaluate.load('meteor'),
+        }
+
+    # Prepare everything with accelerator
+    if not args.model_parallel:
+        model, optimizer, scheduler, train_loader, val_loader = args.accelerator.prepare(
+            model, optimizer, scheduler, train_loader, val_loader)
 
     # Use accelerator.print to print only on the main process.
     args.accelerator.print('\n\n[-] Arguments:\n')
@@ -195,13 +290,24 @@ def train(args):
     args.accelerator.print('\n\n[-] Start training the model\n')
     start_epoch = args.current_epoch
     for epoch in range(start_epoch, args.max_epoch):
+
+        # Train Steps
         args.accelerator.print('[', epoch, '/', args.max_epoch, ']')
-        train_loss = train_epoch(args, train_loader, model, optimizer)
+        train_start_time = time.time()
+        train_loss = train_epoch(args, train_loader, model, optimizer,
+                                 scheduler)
+        args.accelerator.print(' - Train Time:',
+                               round(time.time() - train_start_time, 4))
+
+        # Validation Steps
+        val_start_time = time.time()
         val_loss, scores = val_epoch(args, val_loader, model, tokenizer,
                                      metrics)
+        args.accelerator.print(' - Validation Time:',
+                               round(time.time() - val_start_time, 4))
 
         # Print results
-        args.accelerator.print(' - Train loss:', round(train_loss, 4),
+        args.accelerator.print('- Train loss:', round(train_loss, 4),
                                '\n - Validation loss:', round(val_loss, 4))
         for key, score in scores.items():
             args.accelerator.print(' - ', key, '\n', score)
@@ -216,6 +322,7 @@ def train(args):
         if args.accelerator.is_local_main_process:
             save_checkpoint(args, model)
 
+        # Early Stopping
         args.current_epoch += 1
         if args.waiting > args.patient:
             exit()
@@ -224,14 +331,11 @@ def train(args):
 
 
 def main():
-    # !torchrun --nproc_per_node 4 train.py
+    # TODO: There is a bug with using specific devices through CUDA_VISIBLE_DEVICES when distirbuted type is GPU with model parallel and deepspeed
     parser = argparse.ArgumentParser()
 
     # Data Parameters
-    parser.add_argument('--data_root_dir', type=str, default='data')
-    parser.add_argument('--data_dir',
-                        type=str,
-                        default='hanyua_augmented_dialog')
+    parser.add_argument('--data_dir', type=str, default='data')
     parser.add_argument('--cache_root_dir',
                         type=str,
                         default='/home/jsunhwang/huggingface_models')
@@ -241,31 +345,33 @@ def main():
     parser.add_argument('--model_type', type=str, default='CausalLM')
     parser.add_argument('--pretrained_model',
                         type=str,
-                        default='kakaobrain/kogpt')
-    parser.add_argument('--revision', type=str, default='KoGPT6B-ryan1.5b')
+                        default='skt/ko-gpt-trinity-1.2B-v0.5')
+    parser.add_argument('--revision', type=str, default='main')
+    parser.add_argument('--mixed_precision',
+                        type=str,
+                        default='no',
+                        choices=['no', 'fp16', 'bf16'])
     parser.add_argument('--saved_model', type=str, default=None)
     parser.add_argument('checkpoint', type=str)
 
     # Training Parameters
     parser.add_argument('--max_epoch', type=int, default=100)
-    parser.add_argument('--batch_size', type=int,
-                        default=512)
-    parser.add_argument('--max_batch_size_per_gpu', type=int, default=1)  # 1 process: Max 4; 2 process: Max 1
+    parser.add_argument('--num_warmup_steps', type=int, default=0)
+    parser.add_argument('--batch_size', type=int, default=64)
+    parser.add_argument('--max_batch_size_per_gpu', type=int, default=1)
     parser.add_argument('--loss_type', type=str, default='BCE')
     parser.add_argument('--learning_rate', type=float, default=5e-5)
     parser.add_argument('--weight_decay', type=float, default=1e-1)
+    parser.add_argument('--scheduler_type', type=str, default='linear')
     parser.add_argument('--grad_clip', type=float, default=10.)
     parser.add_argument('--patient', type=int, default=3)
 
-    # Multi-process Parameters
+    # Process Parameters
     parser.add_argument('--cuda_visible_devices',
                         type=str,
                         default='0,1,2,3,4,5,6,7')
-    parser.add_argument('--extra_memory', type=float, default=4.1e+10)
-    parser.add_argument('--mixed_precision',
-                        type=str,
-                        default='no',
-                        choices=['no', 'fp16', 'bf16'])
+    parser.add_argument('--model_parallel', action='store_true')
+    parser.add_argument('--extra_memory', type=float, default=4.8e+10)
     parser.add_argument('--cpu', action='store_true')
 
     parser.add_argument('--random_seed', type=int, default=1234)
@@ -278,11 +384,7 @@ def main():
     args.val_scores = []
     args.waiting = 0
 
-    # Reproduciblity
-    accelerate.utils.set_seed(args.random_seed)
-
-    # need to set early in shell command 'torchrun --nproc_per_node LOCAL_WORLD_SIZE'
-    if 'LOCAL_WORLD_SIZE' not in os.environ:
+    if 'LOCAL_WORLD_SIZE' not in os.environ:  # the number of processes
         os.environ['LOCAL_WORLD_SIZE'] = '1'
     if 'CUDA_VISIBLE_DEVICES' not in os.environ:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.cuda_visible_devices
@@ -291,6 +393,34 @@ def main():
     os.environ['TRANSFORMERS_CACHE'] = os.path.join(args.cache_root_dir,
                                                     args.pretrained_model,
                                                     args.revision)
+
+    # Accelerator
+    args.accelerator = Accelerator(cpu=args.cpu,
+                                   mixed_precision=args.mixed_precision)
+    args.device = args.accelerator.device
+
+    # Reproduciblity
+    accelerate.utils.set_seed(args.random_seed)
+
+    if args.accelerator.state.distributed_type != DistributedType.MULTI_GPU and args.model_parallel:
+        raise ValueError(
+            'If you want use "model parallel", your distributed type should be "multi_gpu".'
+        )
+    if args.model_parallel and len(args.gpu_indices) < 2:
+        raise ValueError(
+            'If you want use "model parallel", the total number of machines per node should be larger than 1.'
+        )
+
+    args.gradient_accumulation_steps = 1
+    if args.accelerator.state.deepspeed_plugin is not None:
+        args.gradient_accumulation_steps = args.accelerator.state.deepspeed_plugin.deepspeed_config[
+            "gradient_accumulation_steps"]
+    if args.batch_size > args.max_batch_size_per_gpu and args.accelerator.distributed_type != DistributedType.TPU:
+        args.gradient_accumulation_steps = args.batch_size // args.max_batch_size_per_gpu
+        args.batch_size = args.max_batch_size_per_gpu
+
+    if not args.model_parallel:
+        args.extra_memory = 0
 
     logging.set_verbosity_error()
 

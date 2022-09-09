@@ -12,7 +12,7 @@ from datasets import load_dataset
 from torch.utils.data import DataLoader
 
 
-class HanyuaDataset():
+class CausalDataset():
     def __init__(self, args, tokenizer):
         self.args = args
 
@@ -23,13 +23,13 @@ class HanyuaDataset():
         self.dataset = load_dataset('json',
                                     data_files={
                                         'train':
-                                        os.path.join(args.data_root_dir,
+                                        os.path.join(args.data_dir,
                                                      'train.jsonl'),
                                         'val':
-                                        os.path.join(args.data_root_dir,
+                                        os.path.join(args.data_dir,
                                                      'val.jsonl'),
                                         'test':
-                                        os.path.join(args.data_root_dir,
+                                        os.path.join(args.data_dir,
                                                      'test.jsonl')
                                     })
         # If you change the function in dataset.map() after you run the previous code once, you should remove cache huggingface/datasets
