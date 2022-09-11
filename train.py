@@ -135,7 +135,10 @@ def val_epoch(args, val_loader, model, tokenizer, metrics):
             if key == 'bertscore':
                 results[key] = metric.compute(lang='others')
                 del results[key]['hashcode']
-                results[key] = {k: sum(v)/len(v) for k, v in results[key].items()}
+                results[key] = {
+                    k: sum(v) / len(v)
+                    for k, v in results[key].items()
+                }
             else:
                 results[key] = metric.compute()
 
@@ -223,6 +226,10 @@ def train(args):
                              'BEST_' + args.saved_model + '.ckpt')))
         args.accelerator.print('[!] Saved checkpoint is loaded')
 
+    if args.adapter:
+        model.add_adapter(args.adapter)
+        model.train_adapter(args.adapter)
+
     if args.accelerator.distributed_type == DistributedType.TPU:
         model.tie_weights()
 
@@ -307,7 +314,7 @@ def train(args):
                                round(time.time() - val_start_time, 4))
 
         # Print results
-        args.accelerator.print('- Train loss:', round(train_loss, 4),
+        args.accelerator.print(' - Train loss:', round(train_loss, 4),
                                '\n - Validation loss:', round(val_loss, 4))
         for key, score in scores.items():
             args.accelerator.print(' - ', key, '\n', score)
@@ -342,16 +349,17 @@ def main():
     parser.add_argument('--max_len', type=int, default=1024)
 
     # Model Parameters
+    parser.add_argument('--mixed_precision',
+                        type=str,
+                        default='no',
+                        choices=['no', 'fp16', 'bf16'])
     parser.add_argument('--model_type', type=str, default='CausalLM')
     parser.add_argument('--pretrained_model',
                         type=str,
                         default='skt/ko-gpt-trinity-1.2B-v0.5')
     parser.add_argument('--revision', type=str, default='main')
-    parser.add_argument('--mixed_precision',
-                        type=str,
-                        default='no',
-                        choices=['no', 'fp16', 'bf16'])
     parser.add_argument('--saved_model', type=str, default=None)
+    parser.add_argument('--adapter', type=str, default=None)
     parser.add_argument('checkpoint', type=str)
 
     # Training Parameters

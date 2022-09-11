@@ -45,14 +45,28 @@ def save_checkpoint(args: argparse.Namespace, model):
     ckpt_dir = os.path.join(args.data_dir, 'checkpoint')
     mkdir(ckpt_dir)
 
+    unwrapped_model = args.accelerator.unwrap_model(model)
     args.waiting += 1
 
-    args.accelerator.save_state(os.path.join(ckpt_dir, args.checkpoint))
+    if args.adapter:
+        if args.accelerator.is_main_process:
+            unwrapped_model.save_adapter(
+                os.path.join(ckpt_dir, 'adapter_' + args.checkpoint),
+                args.adapter)
+    else:
+        args.accelerator.save(
+            unwrapped_model.state_dict(),
+            os.path.join(ckpt_dir, args.checkpoint + '.ckpt'))
 
     if args.val_losses[-1] <= min(args.val_losses):
         args.waiting = 0
-        filename = 'BEST_' + args.checkpoint + '.ckpt'
-
-        unwrapped_model = args.accelerator.unwrap_model(model)
-        args.accelerator.save(unwrapped_model.state_dict(), os.path.join(ckpt_dir, filename))
+        if args.adapter:
+            if args.accelerator.is_main_process:
+                unwrapped_model.save_adapter(
+                    os.path.join(ckpt_dir, 'BEST_adapter_' + args.checkpoint),
+                    args.adapter)
+        else:
+            args.accelerator.save(
+                unwrapped_model.state_dict(),
+                os.path.join(ckpt_dir, 'BEST_' + args.checkpoint + '.ckpt'))
         print('\t[!] The best checkpoint is updated.')
