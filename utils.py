@@ -48,11 +48,11 @@ def save_checkpoint(args: argparse.Namespace, model):
     unwrapped_model = args.accelerator.unwrap_model(model)
     args.waiting += 1
 
-    if args.adapter:
+    if args.add_adapter:
         if args.accelerator.is_main_process:
             unwrapped_model.save_adapter(
                 os.path.join(ckpt_dir, 'adapter_' + args.checkpoint),
-                args.adapter)
+                args.adapter_name)
     else:
         args.accelerator.save(
             unwrapped_model.state_dict(),
@@ -60,11 +60,11 @@ def save_checkpoint(args: argparse.Namespace, model):
 
     if args.val_losses[-1] <= min(args.val_losses):
         args.waiting = 0
-        if args.adapter:
+        if args.add_adapter:
             if args.accelerator.is_main_process:
                 unwrapped_model.save_adapter(
                     os.path.join(ckpt_dir, 'BEST_adapter_' + args.checkpoint),
-                    args.adapter)
+                    args.adapter_name)
         else:
             args.accelerator.save(
                 unwrapped_model.state_dict(),

@@ -18,16 +18,15 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, logging
 def inference(args):
     model_load_time = time.time()
 
-    # Accelerator
-    args.accelerator = Accelerator(cpu=args.cpu,
-                                   mixed_precision=args.mixed_precision)
-    args.device = args.accelerator.device
-
     # Tokenizer
     tokenizer = AutoTokenizer.from_pretrained(
         args.pretrained_model,
         revision=args.revision,
         cache_dir=os.environ['TRANSFORMERS_CACHE'])
+
+    if args.special_tokens_dict and args.special_tokens_dict[
+            'additional_special_tokens']:
+        num_added_toks = tokenizer.add_special_tokens(args.special_tokens_dict)
 
     # Model
     model = AutoModelForCausalLM.from_pretrained(
@@ -37,14 +36,29 @@ def inference(args):
         low_cpu_mem_usage=True,
         cache_dir=os.environ['TRANSFORMERS_CACHE'])
 
-    if args.saved_model:
+    if args.special_tokens_dict and args.special_tokens_dict[
+            'additional_special_tokens']:
+        model.resize_token_embeddings(len(tokenizer))
+
+    if args.add_adapter and args.saved_model:
+        args.adapter_name = model.load_adapter(
+            os.path.join(args.data_dir, 'checkpoint',
+                         'BEST_adapter_' + args.saved_model))
+        model.set_active_adapters(args.adapter_name)
+        args.accelerator.print('[!] Saved checkpoint is loaded')
+    elif args.saved_model:
         model.load_state_dict(
-            torch.load(os.path.join(args.data_dir, 'checkpoint',
-                                    'BEST_' + args.saved_model + '.ckpt'),
-                    map_location=args.device))
+            torch.load(
+                os.path.join(args.data_dir, 'checkpoint',
+                             'BEST_' + args.saved_model + '.ckpt')))
+        args.accelerator.print('[!] Saved checkpoint is loaded')
+    elif args.add_adapter:
+        model.add_adapter('adapter_' + args.saved_model)
+        model.set_active_adapters(args.adapter_name)
 
     model = args.accelerator.prepare(model)
-    args.accelerator.print('Model Loading Time:', time.time() - model_load_time)
+    args.accelerator.print('Model Loading Time:',
+                           time.time() - model_load_time)
 
     # Use accelerator.print to print only on the main process.
     args.accelerator.print('\n\n[-] Arguments:\n')
@@ -54,20 +68,25 @@ def inference(args):
     args.accelerator.wait_for_everyone()
     args.accelerator.print('\n\n[-] Start inference the model\n')
 
-    while(True):
+    while (True):
         input_text = input('User: ')
         input_text = 'User: ' + input_text + '\nAI:'
         inference_time = time.time()
 
-        input_ids = tokenizer.encode(input_text, return_tensors='pt').to(args.device)
-        outputs = model.generate(input_ids, num_beams=5, no_repeat_ngram_size=2)
+        input_ids = tokenizer.encode(input_text,
+                                     return_tensors='pt').to(args.device)
+        outputs = model.generate(input_ids,
+                                 num_beams=5,
+                                 no_repeat_ngram_size=2)
         # outputs = model.generate(input_ids, do_sample=True, top_k=50, no_repeat_ngram_size=2)
         # outputs = model.generate(input_ids, do_sample=True, top_k=0, top_p=0.9, no_repeat_ngram_size=2)
-        output_text = tokenizer.batch_decode(outputs, skip_special_tokens=True)[0]
+        output_text = tokenizer.batch_decode(outputs,
+                                             skip_special_tokens=True)[0]
         output_text = output_text.replace(input_text, '', 1).strip()
 
         print('AI:', output_text)
         args.accelerator.print('Inference Time:', time.time() - inference_time)
+
 
 def main():
     # python test.py
@@ -99,6 +118,14 @@ def main():
     os.environ['TRANSFORMERS_CACHE'] = os.path.join(args.cache_root_dir,
                                                     args.pretrained_model,
                                                     args.revision)
+
+    # Accelerator
+    args.accelerator = Accelerator(cpu=args.cpu,
+                                   mixed_precision=args.mixed_precision)
+    args.device = args.accelerator.device
+
+    # Additional special tokens
+    args.special_tokens_dict = {'additional_special_tokens': ['User:', 'AI:']}
 
     logging.set_verbosity_error()
 

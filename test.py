@@ -32,25 +32,31 @@ def test_epoch(args, test_loader, model, tokenizer, metrics):
         inputs = dict(map(lambda x: (x[0], x[1][:, :-1]), batch.items()))
         labels = batch.input_ids[:, 1:].to(args.device)
 
-        # forward inputs and calculate loss
+        # Forward inputs and calculate loss
         with torch.no_grad():
             outputs = model(**inputs, labels=labels)
 
         # Get predictions and references
         predictions = outputs.logits.argmax(dim=-1)
-        if args.model_parallel:
-            predictions = predictions.to(list(args.device_map.values())[0])
-            labels = labels.to(list(args.device_map.values())[0])
-            outputs = dict(map(lambda x: (x[0], x[1].to(list(args.device_map.values())[0])), outputs.items()))
 
-        predictions = args.accelerator.pad_across_processes(predictions.to(args.device), dim=1, pad_index=tokenizer.pad_token_id)  # dim=-1 is not work
-        labels = args.accelerator.pad_across_processes(labels.to(args.device), dim=1, pad_index=tokenizer.pad_token_id)
+        # Get predictions and references as sentences from token id
+        predictions = args.accelerator.pad_across_processes(
+            predictions,
+            dim=len(predictions.size()) - 1,
+            pad_index=tokenizer.pad_token_id)
+        labels = args.accelerator.pad_across_processes(
+            labels,
+            dim=len(labels.size()) - 1,
+            pad_index=tokenizer.pad_token_id)
         predictions, references = args.accelerator.gather(
-            (predictions, labels))
+            (predictions.contiguous(), labels.contiguous()))
 
-        predictions = tokenizer.batch_decode(predictions, skip_special_tokens=True)
-        references = tokenizer.batch_decode(references, skip_special_tokens=True)
+        predictions = tokenizer.batch_decode(predictions,
+                                             skip_special_tokens=True)
+        references = tokenizer.batch_decode(references,
+                                            skip_special_tokens=True)
 
+        # Calculate scores
         results = {}
         for key, metric in metrics.items():
             metric.add_batch(
@@ -59,24 +65,29 @@ def test_epoch(args, test_loader, model, tokenizer, metrics):
             )
             if key == 'bertscore':
                 results[key] = metric.compute(lang='others')
+                del results[key]['hashcode']
+                results[key] = {
+                    k: sum(v) / len(v)
+                    for k, v in results[key].items()
+                }
             else:
                 results[key] = metric.compute()
 
-        batch_loss = args.accelerator.gather(outputs.loss.to(args.device))
+        batch_loss = args.accelerator.gather(outputs.loss)
         total_loss += torch.sum(batch_loss).item()
     return total_loss / len(test_loader), results
 
 
 def test(args):
-    # Accelerator
-    args.accelerator = Accelerator(cpu=args.cpu,
-                                   mixed_precision=args.mixed_precision)
-    args.device = args.accelerator.device
-
+    # Tokenizer
     tokenizer = AutoTokenizer.from_pretrained(
         args.pretrained_model,
         revision=args.revision,
         cache_dir=os.environ['TRANSFORMERS_CACHE'])
+
+    if args.special_tokens_dict and args.special_tokens_dict[
+            'additional_special_tokens']:
+        num_added_toks = tokenizer.add_special_tokens(args.special_tokens_dict)
 
     # Datasets
     causal_dataset = CausalDataset(args, tokenizer)
@@ -90,22 +101,32 @@ def test(args):
         low_cpu_mem_usage=True,
         cache_dir=os.environ['TRANSFORMERS_CACHE'])
 
-    if args.saved_model:
-        model.load_state_dict(
-            torch.load(os.path.join(args.data_dir, 'checkpoint',
-                                    'BEST_' + args.saved_model + '.ckpt'),
-                    map_location=args.device))
+    if args.special_tokens_dict and args.special_tokens_dict[
+            'additional_special_tokens']:
+        model.resize_token_embeddings(len(tokenizer))
 
-    metrics = {
-        'bertscore':
-        evaluate.load('bertscore'),
-        'meteor':
-        evaluate.load('meteor'),
-        'bleurt':
-        evaluate.load('bleurt',
-                      module_type='metric',
-                      checkpoint='bleurt-large-512'),
-    }
+    if args.add_adapter and args.saved_model:
+        args.adapter_name = model.load_adapter(
+            os.path.join(args.data_dir, 'checkpoint',
+                         'BEST_adapter_' + args.saved_model))
+        model.set_active_adapters(args.adapter_name)
+        args.accelerator.print('[!] Saved checkpoint is loaded')
+    elif args.saved_model:
+        model.load_state_dict(
+            torch.load(
+                os.path.join(args.data_dir, 'checkpoint',
+                             'BEST_' + args.saved_model + '.ckpt')))
+        args.accelerator.print('[!] Saved checkpoint is loaded')
+    elif args.add_adapter:
+        model.add_adapter('adapter_' + args.saved_model)
+        model.set_active_adapters(args.adapter_name)
+
+    # Metrics
+    with args.accelerator.main_process_first():
+        metrics = {
+            'bertscore': evaluate.load('bertscore'),
+            'meteor': evaluate.load('meteor'),
+        }
 
     test_loader, model = args.accelerator.prepare(test_loader, model)
 
@@ -133,13 +154,14 @@ def main():
     parser.add_argument('--cache_root_dir',
                         type=str,
                         default='/home/jsunhwang/huggingface_models')
-    parser.add_argument('--max_len', type=int, default=2048)
+    parser.add_argument('--max_len', type=int, default=1024)
 
     # Model Parameters
     parser.add_argument('--pretrained_model',
                         type=str,
-                        default='kakaobrain/kogpt')
-    parser.add_argument('--revision', type=str, default='KoGPT6B-ryan1.5b')
+                        default='skt/ko-gpt-trinity-1.2B-v0.5')
+    parser.add_argument('--revision', type=str, default='main')
+    parser.add_argument('--add_adapter', action='store_true')
     parser.add_argument('--saved_model', type=str, default=None)
 
     # Testing Parameters
@@ -158,6 +180,14 @@ def main():
     os.environ['TRANSFORMERS_CACHE'] = os.path.join(args.cache_root_dir,
                                                     args.pretrained_model,
                                                     args.revision)
+
+    # Accelerator
+    args.accelerator = Accelerator(cpu=args.cpu,
+                                   mixed_precision=args.mixed_precision)
+    args.device = args.accelerator.device
+
+    # Additional special tokens
+    args.special_tokens_dict = {'additional_special_tokens': ['User:', 'AI:']}
 
     logging.set_verbosity_error()
 

@@ -112,11 +112,15 @@ def val_epoch(args, val_loader, model, tokenizer, metrics):
                     (x[0], x[1].to(list(args.device_map.values())[0])),
                     outputs.items()))
 
-        # dim=-1 is not work
+        # Get predictions and references as sentences from token id
         predictions = args.accelerator.pad_across_processes(
-            predictions, dim=1, pad_index=tokenizer.pad_token_id)
+            predictions,
+            dim=len(predictions.size()) - 1,
+            pad_index=tokenizer.pad_token_id)
         labels = args.accelerator.pad_across_processes(
-            labels, dim=1, pad_index=tokenizer.pad_token_id)
+            labels,
+            dim=len(labels.size()) - 1,
+            pad_index=tokenizer.pad_token_id)
         predictions, references = args.accelerator.gather(
             (predictions.contiguous(), labels.contiguous()))
 
@@ -156,6 +160,10 @@ def train(args):
         args.pretrained_model,
         revision=args.revision,
         cache_dir=os.environ['TRANSFORMERS_CACHE'])
+
+    if args.special_tokens_dict and args.special_tokens_dict[
+            'additional_special_tokens']:
+        num_added_toks = tokenizer.add_special_tokens(args.special_tokens_dict)
 
     # Datasets
     with args.accelerator.main_process_first():
@@ -219,16 +227,26 @@ def train(args):
                 low_cpu_mem_usage=True,
                 cache_dir=os.environ['TRANSFORMERS_CACHE'])
 
-    if args.saved_model:
+    if args.special_tokens_dict and args.special_tokens_dict[
+            'additional_special_tokens']:
+        model.resize_token_embeddings(len(tokenizer))
+
+    if args.add_adapter and args.saved_model:
+        args.adapter_name = model.load_adapter(
+            os.path.join(args.data_dir, 'checkpoint',
+                         'BEST_adapter_' + args.saved_model))
+        model.train_adapter(args.adapter_name)
+        args.accelerator.print('[!] Saved checkpoint is loaded')
+    elif args.saved_model:
         model.load_state_dict(
             torch.load(
-                os.path.join(args.data_root_dir, 'checkpoint',
+                os.path.join(args.data_dir, 'checkpoint',
                              'BEST_' + args.saved_model + '.ckpt')))
         args.accelerator.print('[!] Saved checkpoint is loaded')
-
-    if args.adapter:
-        model.add_adapter(args.adapter)
-        model.train_adapter(args.adapter)
+    elif args.add_adapter:
+        args.adapter_name = args.checkpoint
+        model.add_adapter(args.adapter_name)
+        model.train_adapter(args.adapter_name)
 
     if args.accelerator.distributed_type == DistributedType.TPU:
         model.tie_weights()
@@ -332,7 +350,7 @@ def train(args):
         # Early Stopping
         args.current_epoch += 1
         if args.waiting > args.patient:
-            exit()
+            sys.exit(0)
 
         args.accelerator.print('\n\n')
 
@@ -358,18 +376,18 @@ def main():
                         type=str,
                         default='skt/ko-gpt-trinity-1.2B-v0.5')
     parser.add_argument('--revision', type=str, default='main')
+    parser.add_argument('--add_adapter', action='store_true')
     parser.add_argument('--saved_model', type=str, default=None)
-    parser.add_argument('--adapter', type=str, default=None)
     parser.add_argument('checkpoint', type=str)
 
     # Training Parameters
-    parser.add_argument('--max_epoch', type=int, default=100)
+    parser.add_argument('--max_epoch', type=int, default=10000)
     parser.add_argument('--num_warmup_steps', type=int, default=0)
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--max_batch_size_per_gpu', type=int, default=1)
     parser.add_argument('--loss_type', type=str, default='BCE')
-    parser.add_argument('--learning_rate', type=float, default=5e-5)
-    parser.add_argument('--weight_decay', type=float, default=1e-1)
+    parser.add_argument('--learning_rate', type=float, default=1e-4)
+    parser.add_argument('--weight_decay', type=float, default=1e-2)
     parser.add_argument('--scheduler_type', type=str, default='linear')
     parser.add_argument('--grad_clip', type=float, default=10.)
     parser.add_argument('--patient', type=int, default=3)
@@ -429,6 +447,9 @@ def main():
 
     if not args.model_parallel:
         args.extra_memory = 0
+
+    # Additional special tokens
+    args.special_tokens_dict = {'additional_special_tokens': ['User:', 'AI:']}
 
     logging.set_verbosity_error()
 
