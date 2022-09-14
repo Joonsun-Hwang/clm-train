@@ -3,7 +3,7 @@
 
 ### 1. Installation
 As of September 2022, most versions are compatible, but when using DeepSpeed's ZERO Optimizer Stage 3, you should use the CUDA-10.2 version.  
-If you want to use Stage 3, I recommend using `Dockerfile`.
+If you want to use Stage 3, I recommend using `Dockerfile` as [1.1.2. Docker](#####-1.1.2.-Docker).
 
 #### 1.1. Virtual Environment
 ##### 1.1.1. Local
@@ -28,6 +28,8 @@ https://huggingface.co/docs/accelerate/v0.12.0/en/package_reference/cli#accelera
 accelerate config
 ```
 
+---
+
 
 ### 2. Input Data
 You must have `train.jsonl`, `val.jsonl`, and `test.jsonl` files in the `data` directory, respectively, and this can be set with `--data_dir` among the argument options.  
@@ -39,6 +41,8 @@ The format of `*.jsonl` files are like this:
 {'input_text': 'I like a game called Lost Ark.'}
 ...
 ```
+
+---
 
 
 ### 3. Execution
@@ -74,7 +78,7 @@ accelerate launch --config_file /absolute/path/to/deepspeed/config/file train.py
 
 ##### 3.1.4. TPU
 ###### TPU setting
-The torch_xla library is used, and the library is pre-installed when you create a TPU VM.  
+The [torch_xla](https://pytorch.org/xla/release/1.12/index.html) library is used, and the library is pre-installed when you create a TPU VM.  
 However, due to version conflicts and bugs, it does not work in versions higher than `tpu-vm-pt-1.10` among the tpu versions.  
 After completing tpu creation and configuration through the following shell script, follow the instructions in [1.1.1. Local](#####-1.1.1.-Local).  
 ```
@@ -102,6 +106,8 @@ python test.py --saved_model %CHECKPOINT%
 python inference.py --saved_model %CHECKPOINT%
 ```
 
+---
+
 
 ### 4. Fine-Tuning Methods
 #### 4.1. Pre-Fine-Tuning
@@ -116,7 +122,9 @@ accelerate launch train.py %CHECKPOINT% --add_adpater
 python test.py %CHECKPOINT% --add_adapter
 ```
 
+---
+
 
 ### 5. TODO
-- Verify Docker Configuration and ZERO Optimizer Stage 3
-- Occer error when using specific devices through CUDA_VISIBLE_DEVICES with distirbuted type is GPU with model parallel or DeepSpeed
+- Verify Docker Configuration and ZERO Optimizer Stage 3  
+- Occur error when using specific devices through `CUDA_VISIBLE_DEVICES` (like `CUDA_VISIBLE_DEVICES=1,2 accleerate launch train.py %CHECKPOINT% --model_parallel`) with distirbuted type is Multi-GPU model parallel or DeepSpeed  
