@@ -57,6 +57,7 @@ torchrun train.py %CHECKPOINT%
 ##### 3.1.2. Multi-GPU Model Parallel
 If you want to train the model in parallel, it is recommended not to use accelerate launch.  
 Currently, `accelerate launch` does not provide an argument to control the number of processes, and it is rather slow when parallelizing the model and training with multi-process.  
+Among the arguments, it works by acquiring an empty space (space to be loaded with data) of each device through `--extra memory`, and dividing and allocating the model to the rest.  
 ###### torch distributed
 ```
 torchrun --nproc_per_node 1 train.py %CHECKPOINT% --model_parallel
@@ -114,3 +115,8 @@ accelerate launch train.py %POST_CHECKPOINT% --saved_model %PRE_CHECKPOINT%
 accelerate launch train.py %CHECKPOINT% --add_adpater
 python test.py %CHECKPOINT% --add_adapter
 ```
+
+
+### 5. TODO
+- Verify Docker Configuration and ZERO Optimizer Stage 3
+- Occer error when using specific devices through CUDA_VISIBLE_DEVICES with distirbuted type is GPU with model parallel or DeepSpeed
