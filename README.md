@@ -3,7 +3,7 @@
 
 ### 1. Installation
 As of September 2022, most versions are compatible, but when using DeepSpeed's ZERO Optimizer Stage 3, you should use the CUDA-10.2 version.  
-If you want to use Stage 3, I recommend using `Dockerfile` as [1.1.2. Docker](#####-1.1.2.-Docker).
+If you want to use Stage 3, I recommend using `Dockerfile` as [1.1.2. Docker](#####112-Docker).
 
 #### 1.1. Virtual Environment
 ##### 1.1.1. Local
@@ -80,7 +80,7 @@ accelerate launch --config_file /absolute/path/to/deepspeed/config/file train.py
 ###### TPU setting
 The [torch_xla](https://pytorch.org/xla/release/1.12/index.html) library is used, and the library is pre-installed when you create a TPU VM.  
 However, due to version conflicts and bugs, it does not work in versions higher than `tpu-vm-pt-1.10` among the tpu versions.  
-After completing tpu creation and configuration through the following shell script, follow the instructions in [1.1.1. Local](#####-1.1.1.-Local).  
+After completing tpu creation and configuration through the following shell script, follow the instructions in [1.1.1. Local](#####111-Local).  
 ```
 gcloud alpha compute tpus tpu-vm create %TPU_NAME% --zone=%ZONE% --version=tpu-vm-pt-1.10 --accelerator-type=%TYPE%
 gcloud alpha compute tpus tpu-vm ssh %TPU_NAME% --zone %ZONE% --project %PROJECT_NAME%
