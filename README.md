@@ -128,3 +128,4 @@ python test.py %CHECKPOINT% --add_adapter
 ### 5. TODO
 - Verify Docker Configuration and ZERO Optimizer Stage 3  
 - Occur error when using specific devices through `CUDA_VISIBLE_DEVICES` (like `CUDA_VISIBLE_DEVICES=1,2 accleerate launch train.py %CHECKPOINT% --model_parallel`) with distirbuted type is Multi-GPU model parallel or DeepSpeed  
+- After installing the `adapter-transformer` library, the `.from_pretrained()` function of the transformers model no longer supports the `device_map` argument.
