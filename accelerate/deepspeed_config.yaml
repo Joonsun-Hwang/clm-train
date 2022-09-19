@@ -1,7 +1,7 @@
 compute_environment: LOCAL_MACHINE
 deepspeed_config:
-  deepspeed_config_file: /root/train-clm/accelerate/zero3_offload_config_accelerate.json
-  zero3_init_flag: true
+  deepspeed_config_file: accelerate/zero2_config_accelerate.json
+  zero3_init_flag: false
 distributed_type: DEEPSPEED
 fsdp_config: {}
 machine_rank: 0

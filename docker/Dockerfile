@@ -1,10 +1,26 @@
 # Builds GPU docker image of PyTorch
 # Uses multi-staged approach to reduce size
+
+# Environment Variables
+ARG PYTHON_VERSION=3.7.3
+
+# 10.2 envs
+ARG CUDA_VERSION=10.2
+ARG WHEEL_VERSION=102
+ARG CUDNN_VERSION=8
+ARG UBUNTU_VERSION=18.04
+
+# 11.2 envs
+# ARG CUDA_VERSION=11.2.2
+# ARG WHEEL_VERSION=113
+# ARG CUDNN_VERSION=8
+# ARG UBUNTU_VERSION=20.04
+
 # Stage 1
 # Use base conda image to reduce time
 FROM continuumio/miniconda3:latest AS compile-image
+
 # Specify py version
-ENV PYTHON_VERSION=3.7.3
 # Install apt libs
 RUN apt-get update && \
     apt-get install -y curl git wget && \
@@ -19,17 +35,18 @@ ENV PATH /opt/conda/envs/accelerate/bin:$PATH
 # Activate our bash shell
 RUN chsh -s /bin/bash
 SHELL ["/bin/bash", "-c"]
+
 # Activate the conda env and install torch + accelerate
 RUN source activate accelerate && \
     python3 -m pip install --no-cache-dir \
     git+https://github.com/huggingface/accelerate#egg=accelerate[testing,test_trackers] \
-    --extra-index-url https://download.pytorch.org/whl/cu113
+    --extra-index-url https://download.pytorch.org/whl/cu${WHEEL_VERSION}
 # Install additional libraries if you want
 RUN python3 -m pip install --no-cache-dir \
-    adapter-transformers bert-score gpustat nltk
+    adapter-transformers bert-score gpustat nltk nvidia-ml-py3
 
 # Stage 2
-FROM nvidia/cuda:11.2.2-cudnn8-devel-ubuntu20.04 AS build-image
+FROM nvidia/cuda:${CUDA_VERSION}-cudnn${CUDNN_VERSION}-devel-ubuntu${UBUNTU_VERSION} AS build-image
 COPY --from=compile-image /opt/conda /opt/conda
 ENV PATH /opt/conda/bin:$PATH
 

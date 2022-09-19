@@ -360,7 +360,7 @@ def main():
     parser.add_argument('checkpoint', type=str)
 
     # Training Parameters
-    parser.add_argument('--max_epoch', type=int, default=10000)
+    parser.add_argument('--max_epoch', type=int, default=5)
     parser.add_argument('--num_warmup_steps', type=int, default=0)
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--max_batch_size_per_gpu', type=int, default=1)
