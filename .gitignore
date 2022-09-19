@@ -103,8 +103,11 @@ venv.bak/
 # mypy
 .mypy_cache/
 
+.bash_history
+
 *data*/**/*
+*checkpoint*/*
 *.out
 output/*
 
-*.sh
+huggingface/*

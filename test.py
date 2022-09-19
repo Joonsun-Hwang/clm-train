@@ -107,14 +107,13 @@ def test(args):
 
     if args.add_adapter and args.saved_model:
         args.adapter_name = model.load_adapter(
-            os.path.join(args.data_dir, 'checkpoint',
-                         'BEST_adapter_' + args.saved_model))
+            os.path.join('checkpoint', 'BEST_adapter_' + args.saved_model))
         model.set_active_adapters(args.adapter_name)
         args.accelerator.print('[!] Saved checkpoint is loaded')
     elif args.saved_model:
         model.load_state_dict(
             torch.load(
-                os.path.join(args.data_dir, 'checkpoint',
+                os.path.join('checkpoint',
                              'BEST_' + args.saved_model + '.ckpt')))
         args.accelerator.print('[!] Saved checkpoint is loaded')
     elif args.add_adapter:
@@ -124,8 +123,8 @@ def test(args):
     # Metrics
     with args.accelerator.main_process_first():
         metrics = {
-            'bertscore': evaluate.load('bertscore'),
-            'meteor': evaluate.load('meteor'),
+            'meteor':
+            evaluate.load('meteor', cache_dir=os.environ['HF_EVALUATE_CACHE']),
         }
 
     test_loader, model = args.accelerator.prepare(test_loader, model)
@@ -151,9 +150,7 @@ def main():
 
     # Data Parameters
     parser.add_argument('--data_dir', type=str, default='data')
-    parser.add_argument('--cache_root_dir',
-                        type=str,
-                        default='/home/jsunhwang/huggingface_models')
+    parser.add_argument('--cache_root_dir', type=str, default='huggingface')
     parser.add_argument('--max_len', type=int, default=1024)
 
     # Model Parameters
@@ -180,6 +177,8 @@ def main():
     os.environ['TRANSFORMERS_CACHE'] = os.path.join(args.cache_root_dir,
                                                     args.pretrained_model,
                                                     args.revision)
+    os.environ['HF_DATASETS_CACHE'] = os.path.join(args.cache_root_dir,
+                                                   'datasets')
 
     # Accelerator
     args.accelerator = Accelerator(cpu=args.cpu,

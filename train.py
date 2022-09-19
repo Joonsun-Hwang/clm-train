@@ -38,6 +38,7 @@ def train_epoch(args, train_loader, model, optimizer, scheduler):
         inputs = dict(map(lambda x: (x[0], x[1][:, :-1]), batch.items()))
         labels = batch.input_ids[:, 1:]
 
+        # TODO: Debug for cuda device error.
         if args.model_parallel:
             inputs = dict(
                 map(
@@ -51,12 +52,6 @@ def train_epoch(args, train_loader, model, optimizer, scheduler):
 
         # Calculate gradient
         args.accelerator.backward(outputs.loss)
-        if args.model_parallel:
-            outputs = dict(
-                map(
-                    lambda x:
-                    (x[0], x[1].to(list(args.device_map.values())[0])),
-                    outputs.items()))
 
         # Update model parameters accumulatively
         if step % args.gradient_accumulation_steps == 0:
@@ -106,13 +101,8 @@ def val_epoch(args, val_loader, model, tokenizer, metrics):
         if args.model_parallel:
             predictions = predictions.to(list(args.device_map.values())[0])
             labels = labels.to(list(args.device_map.values())[0])
-            outputs = dict(
-                map(
-                    lambda x:
-                    (x[0], x[1].to(list(args.device_map.values())[0])),
-                    outputs.items()))
 
-        # Get predictions and references as sentences from token id
+        # Make predictions and references to sentences from token id
         predictions = args.accelerator.pad_across_processes(
             predictions,
             dim=len(predictions.size()) - 1,
@@ -136,15 +126,7 @@ def val_epoch(args, val_loader, model, tokenizer, metrics):
                 predictions=predictions,
                 references=references,
             )
-            if key == 'bertscore':
-                results[key] = metric.compute(lang='others')
-                del results[key]['hashcode']
-                results[key] = {
-                    k: sum(v) / len(v)
-                    for k, v in results[key].items()
-                }
-            else:
-                results[key] = metric.compute()
+            results[key] = metric.compute()
 
         batch_loss = args.accelerator.gather(outputs.loss)
         total_loss += torch.sum(batch_loss).item()
@@ -204,27 +186,23 @@ def train(args):
                 args.pretrained_model,
                 revision=args.revision,
                 device_map=args.device_map,
-                low_cpu_mem_usage=True,
                 cache_dir=os.environ['TRANSFORMERS_CACHE'])
         elif args.model_type == 'ConditionalGeneration':
             model = AutoModelForPreTraining.from_pretrained(
                 args.pretrained_model,
                 revision=args.revision,
                 device_map=args.device_map,
-                low_cpu_mem_usage=True,
                 cache_dir=os.environ['TRANSFORMERS_CACHE'])
     else:
         if args.model_type == 'CausalLM':
             model = AutoModelForCausalLM.from_pretrained(
                 args.pretrained_model,
                 revision=args.revision,
-                low_cpu_mem_usage=True,
                 cache_dir=os.environ['TRANSFORMERS_CACHE'])
         elif args.model_type == 'ConditionalGeneration':
             model = AutoModelForPreTraining.from_pretrained(
                 args.pretrained_model,
                 revision=args.revision,
-                low_cpu_mem_usage=True,
                 cache_dir=os.environ['TRANSFORMERS_CACHE'])
 
     if args.special_tokens_dict and args.special_tokens_dict[
@@ -233,14 +211,13 @@ def train(args):
 
     if args.add_adapter and args.saved_model:
         args.adapter_name = model.load_adapter(
-            os.path.join(args.data_dir, 'checkpoint',
-                         'BEST_adapter_' + args.saved_model))
+            os.path.join('checkpoint', 'BEST_adapter_' + args.saved_model))
         model.train_adapter(args.adapter_name)
         args.accelerator.print('[!] Saved checkpoint is loaded')
     elif args.saved_model:
         model.load_state_dict(
             torch.load(
-                os.path.join(args.data_dir, 'checkpoint',
+                os.path.join('checkpoint',
                              'BEST_' + args.saved_model + '.ckpt')))
         args.accelerator.print('[!] Saved checkpoint is loaded')
     elif args.add_adapter:
@@ -293,10 +270,9 @@ def train(args):
             num_training_steps=(len(train_loader) * args.max_epoch) //
             args.gradient_accumulation_steps)
 
-    # Metrics
+    # Metrics for validation
     with args.accelerator.main_process_first():
         metrics = {
-            'bertscore': evaluate.load('bertscore'),
             'meteor': evaluate.load('meteor'),
         }
 
@@ -361,9 +337,7 @@ def main():
 
     # Data Parameters
     parser.add_argument('--data_dir', type=str, default='data')
-    parser.add_argument('--cache_root_dir',
-                        type=str,
-                        default='/home/jsunhwang/huggingface_models')
+    parser.add_argument('--cache_root_dir', type=str, default='huggingface')
     parser.add_argument('--max_len', type=int, default=1024)
 
     # Model Parameters
@@ -374,7 +348,7 @@ def main():
     parser.add_argument('--model_type', type=str, default='CausalLM')
     parser.add_argument('--pretrained_model',
                         type=str,
-                        default='skt/ko-gpt-trinity-1.2B-v0.5')
+                        default='EleutherAI/polyglot-ko-1.3b')
     parser.add_argument('--revision', type=str, default='main')
     parser.add_argument('--add_adapter', action='store_true')
     parser.add_argument('--saved_model', type=str, default=None)
@@ -397,7 +371,7 @@ def main():
                         type=str,
                         default='0,1,2,3,4,5,6,7')
     parser.add_argument('--model_parallel', action='store_true')
-    parser.add_argument('--extra_memory', type=float, default=4.8e+10)
+    parser.add_argument('--extra_memory', type=float, default=4.5e+10)
     parser.add_argument('--cpu', action='store_true')
 
     parser.add_argument('--random_seed', type=int, default=1234)
@@ -419,6 +393,8 @@ def main():
     os.environ['TRANSFORMERS_CACHE'] = os.path.join(args.cache_root_dir,
                                                     args.pretrained_model,
                                                     args.revision)
+    os.environ['HF_DATASETS_CACHE'] = os.path.join(args.cache_root_dir,
+                                                   'datasets')
 
     # Accelerator
     args.accelerator = Accelerator(cpu=args.cpu,
@@ -435,6 +411,10 @@ def main():
     if args.model_parallel and len(args.gpu_indices) < 2:
         raise ValueError(
             'If you want use "model parallel", the total number of machines per node should be larger than 1.'
+        )
+    if args.model_parallel and int(os.environ['LOCAL_WORLD_SIZE']) > 1:
+        raise ValueError(
+            'If you want use "model parallel", the total number of processes per node should be less than or equal to 1.'
         )
 
     args.gradient_accumulation_steps = 1

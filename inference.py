@@ -7,12 +7,13 @@ import random
 import sys
 import time
 
-import accelerate
 import evaluate
 import torch
-from accelerate import Accelerator
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, logging
+
+import accelerate
+from accelerate import Accelerator
 
 
 def inference(args):
@@ -42,14 +43,13 @@ def inference(args):
 
     if args.add_adapter and args.saved_model:
         args.adapter_name = model.load_adapter(
-            os.path.join(args.data_dir, 'checkpoint',
-                         'BEST_adapter_' + args.saved_model))
+            os.path.join('checkpoint', 'BEST_adapter_' + args.saved_model))
         model.set_active_adapters(args.adapter_name)
         args.accelerator.print('[!] Saved checkpoint is loaded')
     elif args.saved_model:
         model.load_state_dict(
             torch.load(
-                os.path.join(args.data_dir, 'checkpoint',
+                os.path.join('checkpoint',
                              'BEST_' + args.saved_model + '.ckpt')))
         args.accelerator.print('[!] Saved checkpoint is loaded')
     elif args.add_adapter:
@@ -96,7 +96,7 @@ def main():
     parser.add_argument('--data_dir', type=str, default='data')
     parser.add_argument('--cache_root_dir',
                         type=str,
-                        default='/home/jsunhwang/huggingface_models')
+                        default='huggingface')
     parser.add_argument('--max_len', type=int, default=2048)
 
     # Model Parameters
@@ -116,8 +116,11 @@ def main():
     args = parser.parse_args()
 
     os.environ['TRANSFORMERS_CACHE'] = os.path.join(args.cache_root_dir,
+                                                    'transformers'
                                                     args.pretrained_model,
                                                     args.revision)
+    os.environ['HF_DATASETS_CACHE'] = os.path.join(args.cache_root_dir,
+                                                   'datasets')
 
     # Accelerator
     args.accelerator = Accelerator(cpu=args.cpu,

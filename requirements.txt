@@ -5,7 +5,7 @@ deepspeed
 evaluate
 nltk
 numpy
-nvidia-smi
+nvidia-ml-py3
 pandas
 Pillow
 PyYAML

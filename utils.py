@@ -42,7 +42,7 @@ def calc_gpu_free_memory(gpu_indices, extra_memory) -> dict:
 
 
 def save_checkpoint(args: argparse.Namespace, model):
-    ckpt_dir = os.path.join(args.data_dir, 'checkpoint')
+    ckpt_dir = os.path.join('checkpoint')
     mkdir(ckpt_dir)
 
     unwrapped_model = args.accelerator.unwrap_model(model)

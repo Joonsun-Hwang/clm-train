@@ -1,29 +1,44 @@
-## Fine-tuning Huggingface's CLMs with Accelerate
+## Fine-tuning Huggingface's CLMs with accelerate
 
 
 ### 1. Installation
-As of September 2022, most versions are compatible, but when using DeepSpeed's ZERO Optimizer Stage 3, you should use the CUDA-10.2 version.  
-If you want to use Stage 3, I recommend using `Dockerfile` as [1.1.2. Docker](#####112-Docker).
 
 #### 1.1. Virtual Environment
-##### 1.1.1. Local
+##### 1.1.1. Local (Not recommended)
 ```
-conda create -n %V_ENV%
-conda activate %V_ENV%
+conda create -n accelerate
+conda activate accelerate
 pip install -r requirements.txt
-accelerate config
 ```
 
 ##### 1.1.2. Docker
+###### Build container
 ```
-sudo docker build -t pytorch-cuda10.2:pytorch-cuda10.2 ./
-sudo docker run --rm -d -p 12345:12345 --runtime=nvidia -e NVIDIA_DRIVER_CAPABILITIES=compute,utility -e NVIDIA_VISIBLE_DEVICES=all pytorch-cuda10.2:pytorch-cuda10.2 /bin/bash
-accelerate config
+mv env.tmp .env ; rm env.tmp
+vi .env
+make docker-build
+make docker-run
 ```
+
+###### Execute container (in dev)
+```
+make docker-start
+make docker-exec
+source activate accelerate
+```
+
+###### Remove container
+```
+make docker-stop
+make docker-rm
+```
+
 
 #### 1.2 Configuration
 Please refer to the following document to set virtual environment up according to your resources.  
 https://huggingface.co/docs/accelerate/v0.12.0/en/package_reference/cli#accelerate-config  
+
+There are default and deepspeed configuration files in `accelerate` directory.  
 ```
 accelerate config
 ```
@@ -42,6 +57,8 @@ The format of `*.jsonl` files are like this:
 ...
 ```
 
+If you want to add other special tokens, you could do it at `main()` function in `train.py` file.  
+
 ---
 
 
@@ -49,11 +66,11 @@ The format of `*.jsonl` files are like this:
 
 #### 3.1. Train
 ##### 3.1.1. Multi-GPU Data Parallel
-###### accelerate
+###### accelerate launch
 ```
 accelerate launch train.py %CHECKPOINT%
 ```
-###### torch distributed
+###### torch distributed launch
 ```
 torchrun train.py %CHECKPOINT%
 ```
@@ -61,19 +78,21 @@ torchrun train.py %CHECKPOINT%
 ##### 3.1.2. Multi-GPU Model Parallel
 If you want to train the model in parallel, it is recommended not to use accelerate launch.  
 Currently, `accelerate launch` does not provide an argument to control the number of processes, and it is rather slow when parallelizing the model and training with multi-process.  
-Among the arguments, it works by acquiring an empty space (space to be loaded with data) of each device through `--extra memory`, and dividing and allocating the model to the rest.  
-###### torch distributed
+Among the arguments in `train.py` file, the `--extra memory` works by acquiring an empty space (space to be loaded with data) of each device, then dividing and allocating the model to the rest.  
+###### torch distributed launch
 ```
 torchrun --nproc_per_node 1 train.py %CHECKPOINT% --model_parallel
 ```
 
 ##### 3.1.3. DeepSpeed
-To use DeepSpeed, you need yaml and json configuration files. That is, you need to configure DeepSpeed via `accelerate config` command.  
+To use DeepSpeed, you need yaml and json configuration files. That is, you need to configure DeepSpeed via `accelerate config` command like [1.1.2. Docker](#####112-Docker).  
 Please check the following documents:  
-https://huggingface.co/docs/accelerate/v0.12.0/en/usage_guides/deepspeed#deepspeed
-###### accelerate
+https://huggingface.co/docs/accelerate/v0.12.0/en/usage_guides/deepspeed#deepspeed  
+
+There are default and deepspeed configuration files in `accelerate` directory.  
+###### accelerate launch
 ```
-accelerate launch --config_file /absolute/path/to/deepspeed/config/file train.py %CHECKPOINT%
+accelerate launch --config_file /path/to/deepspeed/config/file train.py %CHECKPOINT%
 ```
 
 ##### 3.1.4. TPU
@@ -91,7 +110,7 @@ source ~/.bashrc
 
 python3 -m pip install --upgrade pip
 ```
-###### accelerate
+###### accelerate launch
 ```
 accelerate launch train.py %CHECKPOINT%
 ```
@@ -126,5 +145,4 @@ python test.py %CHECKPOINT% --add_adapter
 
 
 ### 5. TODO
-- Verify Docker Configuration and ZERO Optimizer Stage 3  
-- Occur error when using specific devices through `CUDA_VISIBLE_DEVICES` (like `CUDA_VISIBLE_DEVICES=1,2 accleerate launch train.py %CHECKPOINT% --model_parallel`) with distirbuted type is Multi-GPU model parallel or DeepSpeed  
+- After installing the adapter-transformer library, the .from_pretrained() function of the transformers model no longer supports the device_map argument.

@@ -13,6 +13,7 @@ from torch.utils.data import DataLoader
 
 
 class CausalDataset():
+
     def __init__(self, args, tokenizer):
         self.args = args
 
@@ -31,7 +32,8 @@ class CausalDataset():
                                         'test':
                                         os.path.join(args.data_dir,
                                                      'test.jsonl')
-                                    })
+                                    },
+                                    cache_dir=os.environ['HF_DATASETS_CACHE'])
         # If you change the function in dataset.map() after you run the previous code once, you should remove cache huggingface/datasets
         self.tokenized_dataset = self.dataset.map(
             self._tokenize_function,
@@ -52,11 +54,12 @@ class CausalDataset():
                                       padding="max_length",
                                       max_length=self.args.max_len,
                                       return_tensors="pt")
-        return self.tokenizer.pad(examples,
-                                  padding="longest",
-                                #   padding="max_length",
-                                #   max_length=self.args.max_len,  # for test, check args.extra_memory
-                                  return_tensors="pt")
+        return self.tokenizer.pad(
+            examples,
+            padding="longest",
+            #   padding="max_length",
+            #   max_length=self.args.max_len,  # for test, check args.extra_memory
+            return_tensors="pt")
 
     def get_dataloaders(self, split):
         assert split in ['train', 'validation', 'test']
