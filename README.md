@@ -145,4 +145,3 @@ python test.py %CHECKPOINT% --add_adapter
 
 
 ### 5. TODO
-- After installing the adapter-transformer library, the .from_pretrained() function of the transformers model no longer supports the device_map argument.
