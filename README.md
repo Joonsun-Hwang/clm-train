@@ -8,10 +8,28 @@
 ```
 conda create -n accelerate
 conda activate accelerate
+
 pip install -r requirements.txt
 ```
 
-##### 1.1.2. Docker
+##### 1.1.2. TPU
+The [torch_xla](https://pytorch.org/xla/release/1.12/index.html) library is used, and the library is pre-installed when you create a TPU VM.  
+However, due to version conflicts and bugs, it does not work in versions higher than `tpu-vm-pt-1.10` among the tpu versions.  
+After completing tpu creation and configuration through the following shell script.  
+```
+gcloud alpha compute tpus tpu-vm create %TPU_NAME% --zone=%ZONE% --version=tpu-vm-pt-1.10 --accelerator-type=%TYPE%
+gcloud alpha compute tpus tpu-vm ssh %TPU_NAME% --zone %ZONE% --project %PROJECT_NAME%
+
+echo 'export PATH=$HOME/bin:/usr/local/bin:$HOME/.local/bin:$PATH' >> ~/.bashrc
+echo 'export XRT_TPU_CONFIG="localservice;0;localhost:51011"' >> ~/.bashrc
+source ~/.bashrc
+
+python3 -m pip install --upgrade pip
+
+pip install -r requirements.txt
+```
+
+##### 1.1.3. Docker
 ###### Build container
 ```
 mv env.tmp .env ; rm env.tmp
@@ -95,20 +113,6 @@ accelerate launch --config_file /path/to/deepspeed/config/file train.py %CHECKPO
 ```
 
 ##### 3.1.4. TPU
-###### TPU setting
-The [torch_xla](https://pytorch.org/xla/release/1.12/index.html) library is used, and the library is pre-installed when you create a TPU VM.  
-However, due to version conflicts and bugs, it does not work in versions higher than `tpu-vm-pt-1.10` among the tpu versions.  
-After completing tpu creation and configuration through the following shell script, follow the instructions in [1.1.1. Local](#####111-Local).  
-```
-gcloud alpha compute tpus tpu-vm create %TPU_NAME% --zone=%ZONE% --version=tpu-vm-pt-1.10 --accelerator-type=%TYPE%
-gcloud alpha compute tpus tpu-vm ssh %TPU_NAME% --zone %ZONE% --project %PROJECT_NAME%
-
-echo 'export PATH=$HOME/bin:/usr/local/bin:$HOME/.local/bin:$PATH' >> ~/.bashrc
-echo 'export XRT_TPU_CONFIG="localservice;0;localhost:51011"' >> ~/.bashrc
-source ~/.bashrc
-
-python3 -m pip install --upgrade pip
-```
 ###### accelerate launch
 ```
 accelerate launch train.py %CHECKPOINT%
