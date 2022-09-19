@@ -1,11 +1,12 @@
 accelerate
+adapter-transformers
 bert-score
 datasets
 deepspeed
 evaluate
+gpustat
 nltk
 numpy
-nvidia-ml-py3
 pandas
 Pillow
 PyYAML
