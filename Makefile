@@ -46,5 +46,8 @@ docker-rm-all:
 docker-rmi:
 	docker rmi ${IMAGE_NAME}:${IMAGE_TAG}
 
+gpustat:
+	gpustat -cp -i .1
+
 test:
 	echo $(shell echo ${PWD})

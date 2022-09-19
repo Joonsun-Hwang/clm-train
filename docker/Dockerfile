@@ -26,7 +26,7 @@ RUN source activate accelerate && \
     --extra-index-url https://download.pytorch.org/whl/cu113
 # Install additional libraries if you want
 RUN python3 -m pip install --no-cache-dir \
-    adapter-transformers bert-score nltk nvidia-ml-py3
+    adapter-transformers bert-score gpustat nltk
 
 # Stage 2
 FROM nvidia/cuda:11.2.2-cudnn8-devel-ubuntu20.04 AS build-image
