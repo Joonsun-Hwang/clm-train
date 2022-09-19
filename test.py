@@ -125,9 +125,10 @@ def test(args):
     # Metrics
     with args.accelerator.main_process_first():
         metrics = {
-            'meteor':
-            evaluate.load('meteor', cache_dir=os.environ['HF_EVALUATE_CACHE']),
+            'bertscore': evaluate.load('bertscore'),
+            'meteor': evaluate.load('meteor'),
         }
+
 
     test_loader, model = args.accelerator.prepare(test_loader, model)
 
@@ -177,10 +178,17 @@ def main():
     args = parser.parse_args()
 
     os.environ['TRANSFORMERS_CACHE'] = os.path.join(args.cache_root_dir,
+                                                    'transformers',
                                                     args.pretrained_model,
                                                     args.revision)
     os.environ['HF_DATASETS_CACHE'] = os.path.join(args.cache_root_dir,
                                                    'datasets')
+    os.environ['HF_EVALUATE_CACHE'] = os.path.join(args.cache_root_dir,
+                                                   'evaluate')
+    os.environ['HF_METRICS_CACHE'] = os.path.join(args.cache_root_dir,
+                                                  'metrics')
+    os.environ['HF_MODULES_CACHE'] = os.path.join(args.cache_root_dir,
+                                                  'modules')
 
     # Accelerator
     args.accelerator = Accelerator(cpu=args.cpu,

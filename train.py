@@ -388,7 +388,9 @@ def main():
 
     if 'LOCAL_WORLD_SIZE' not in os.environ:  # the number of processes
         os.environ['LOCAL_WORLD_SIZE'] = '1'
+
     os.environ['TRANSFORMERS_CACHE'] = os.path.join(args.cache_root_dir,
+                                                    'transformers',
                                                     args.pretrained_model,
                                                     args.revision)
     os.environ['HF_DATASETS_CACHE'] = os.path.join(args.cache_root_dir,

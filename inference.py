@@ -102,7 +102,7 @@ def main():
     # Model Parameters
     parser.add_argument('--pretrained_model',
                         type=str,
-                        default='skt/ko-gpt-trinity-1.2B-v0.5')
+                        default='EleutherAI/polyglot-ko-1.3b')
     parser.add_argument('--revision', type=str, default='main')
     parser.add_argument('--saved_model', type=str, default=None)
 
@@ -116,11 +116,17 @@ def main():
     args = parser.parse_args()
 
     os.environ['TRANSFORMERS_CACHE'] = os.path.join(args.cache_root_dir,
-                                                    'transformers'
+                                                    'transformers',
                                                     args.pretrained_model,
                                                     args.revision)
     os.environ['HF_DATASETS_CACHE'] = os.path.join(args.cache_root_dir,
                                                    'datasets')
+    os.environ['HF_EVALUATE_CACHE'] = os.path.join(args.cache_root_dir,
+                                                   'evaluate')
+    os.environ['HF_METRICS_CACHE'] = os.path.join(args.cache_root_dir,
+                                                  'metrics')
+    os.environ['HF_MODULES_CACHE'] = os.path.join(args.cache_root_dir,
+                                                  'modules')
 
     # Accelerator
     args.accelerator = Accelerator(cpu=args.cpu,
