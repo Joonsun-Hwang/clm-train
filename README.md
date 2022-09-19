@@ -144,3 +144,4 @@ python test.py %CHECKPOINT% --add_adapter
 
 
 ### 5. TODO
+- CUDA Device Error when data parallel

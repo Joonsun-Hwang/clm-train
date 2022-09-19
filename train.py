@@ -48,7 +48,9 @@ def train_epoch(args, train_loader, model, optimizer, scheduler):
             labels = labels.to(list(args.device_map.values())[-1])
 
         # Forward inputs and calculate loss
-        outputs = model(**inputs, labels=labels)
+        outputs = model(input_ids=inputs['input_ids'],
+                        attention_mask=inputs['attention_mask'],
+                        labels=labels)
 
         # Calculate gradient
         args.accelerator.backward(outputs.loss)
@@ -94,7 +96,9 @@ def val_epoch(args, val_loader, model, tokenizer, metrics):
 
         # Forward inputs and calculate loss
         with torch.no_grad():
-            outputs = model(**inputs, labels=labels)
+            outputs = model(input_ids=inputs['input_ids'],
+                            attention_mask=inputs['attention_mask'],
+                            labels=labels)
 
         # Get predictions and references
         predictions = outputs.logits.argmax(dim=-1)
@@ -174,7 +178,8 @@ def train(args):
                     for submodule in module.children()
                 ])
 
-        free_memory = calc_gpu_free_memory(args.gpu_indices, args.extra_memory)
+        free_memory = calc_gpu_free_memory(
+            list(range(torch.cuda.device_count())), args.extra_memory)
         args.device_map = infer_auto_device_map(
             model,
             max_memory=free_memory,
@@ -367,9 +372,6 @@ def main():
     parser.add_argument('--patient', type=int, default=3)
 
     # Process Parameters
-    parser.add_argument('--cuda_visible_devices',
-                        type=str,
-                        default='0,1,2,3,4,5,6,7')
     parser.add_argument('--model_parallel', action='store_true')
     parser.add_argument('--extra_memory', type=float, default=4.5e+10)
     parser.add_argument('--cpu', action='store_true')
@@ -386,15 +388,17 @@ def main():
 
     if 'LOCAL_WORLD_SIZE' not in os.environ:  # the number of processes
         os.environ['LOCAL_WORLD_SIZE'] = '1'
-    if 'CUDA_VISIBLE_DEVICES' not in os.environ:
-        os.environ['CUDA_VISIBLE_DEVICES'] = args.cuda_visible_devices
-    args.gpu_indices = list(
-        map(int, os.environ['CUDA_VISIBLE_DEVICES'].split(',')))
     os.environ['TRANSFORMERS_CACHE'] = os.path.join(args.cache_root_dir,
                                                     args.pretrained_model,
                                                     args.revision)
     os.environ['HF_DATASETS_CACHE'] = os.path.join(args.cache_root_dir,
                                                    'datasets')
+    os.environ['HF_EVALUATE_CACHE'] = os.path.join(args.cache_root_dir,
+                                                   'evaluate')
+    os.environ['HF_METRICS_CACHE'] = os.path.join(args.cache_root_dir,
+                                                  'metrics')
+    os.environ['HF_MODULES_CACHE'] = os.path.join(args.cache_root_dir,
+                                                  'modules')
 
     # Accelerator
     args.accelerator = Accelerator(cpu=args.cpu,
@@ -408,7 +412,7 @@ def main():
         raise ValueError(
             'If you want use "model parallel", your distributed type should be "multi_gpu".'
         )
-    if args.model_parallel and len(args.gpu_indices) < 2:
+    if args.model_parallel and torch.cuda.device_count() < 2:
         raise ValueError(
             'If you want use "model parallel", the total number of machines per node should be larger than 1.'
         )

@@ -34,7 +34,9 @@ def test_epoch(args, test_loader, model, tokenizer, metrics):
 
         # Forward inputs and calculate loss
         with torch.no_grad():
-            outputs = model(**inputs, labels=labels)
+            outputs = model(input_ids=inputs['input_ids'],
+                            attention_mask=inputs['attention_mask'],
+                            labels=labels)
 
         # Get predictions and references
         predictions = outputs.logits.argmax(dim=-1)
