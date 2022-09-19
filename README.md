@@ -32,7 +32,7 @@ pip install -r requirements.txt
 ##### 1.1.3. Docker
 ###### Build container
 ```
-mv env.tmp .env ; rm env.tmp
+mv env.tmp .env
 vi .env
 make docker-build
 make docker-run
