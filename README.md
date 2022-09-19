@@ -85,7 +85,7 @@ If you want to add other special tokens, you could do it at `main()` function in
 ##### 3.1.1. Multi-GPU Data Parallel
 ###### accelerate launch
 ```
-accelerate launch --config_file huggingface/default_config.yaml train.py %CHECKPOINT%
+accelerate launch --config_file accelerate/default_config.yaml train.py %CHECKPOINT%
 ```
 ###### torch distributed launch
 ```
@@ -109,13 +109,13 @@ https://huggingface.co/docs/accelerate/v0.12.0/en/usage_guides/deepspeed#deepspe
 There example files of default and deepspeed configuration are in `accelerate` directory.  
 ###### accelerate launch
 ```
-accelerate launch --config_file huggingface/deepspeed_config.yaml train.py %CHECKPOINT%
+accelerate launch --config_file accelerate/deepspeed_config.yaml train.py %CHECKPOINT%
 ```
 
 ##### 3.1.4. TPU
 ###### accelerate launch
 ```
-accelerate launch --config_file huggingface/default_config.yaml train.py %CHECKPOINT%
+accelerate launch --config_file accelerate/default_config.yaml train.py %CHECKPOINT%
 ```
 
 #### 3.2. Test
@@ -134,13 +134,13 @@ python inference.py --saved_model %CHECKPOINT%
 ### 4. Fine-Tuning Methods
 #### 4.1. Pre-Fine-Tuning
 ```
-accelerate launch --config_file huggingface/default_config.yaml train.py %PRE_CHECKPOINT%
-accelerate launch --config_file huggingface/default_config.yaml train.py %POST_CHECKPOINT% --saved_model %PRE_CHECKPOINT%
+accelerate launch --config_file accelerate/default_config.yaml train.py %PRE_CHECKPOINT%
+accelerate launch --config_file accelerate/default_config.yaml train.py %POST_CHECKPOINT% --saved_model %PRE_CHECKPOINT%
 ```
 
 #### 4.2. Adapter
 ```
-accelerate launch --config_file huggingface/default_config.yaml train.py %CHECKPOINT% --add_adpater
+accelerate launch --config_file accelerate/default_config.yaml train.py %CHECKPOINT% --add_adpater
 python test.py %CHECKPOINT% --add_adapter
 ```
 
