@@ -55,7 +55,7 @@ make docker-rm
 Please refer to the following document to set virtual environment up according to your resources.  
 https://huggingface.co/docs/accelerate/v0.12.0/en/package_reference/cli#accelerate-config  
 
-There are default and deepspeed configuration files in `accelerate` directory.  
+There example files of default and deepspeed configuration are in `accelerate` directory.  
 ```
 accelerate config
 ```
