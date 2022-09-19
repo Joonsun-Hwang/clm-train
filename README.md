@@ -24,7 +24,6 @@ make docker-run
 ```
 make docker-start
 make docker-exec
-source activate accelerate
 ```
 
 ###### Remove container
