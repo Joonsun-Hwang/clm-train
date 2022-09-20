@@ -14,8 +14,8 @@ pip install -r requirements.txt
 
 ##### 1.1.2. TPU
 The [torch_xla](https://pytorch.org/xla/release/1.12/index.html) library is used, and the library is pre-installed when you create a TPU VM.  
-However, due to version conflicts and bugs, it does not work in versions higher than `tpu-vm-pt-1.10` among the tpu versions.  
-After completing tpu creation and configuration through the following shell script.  
+However, due to version conflicts and bugs, it does not work in versions higher than `tpu-vm-pt-1.10` among the TPU versions.  
+After completing TPU creation and configuration through the following shell script.  
 ```
 gcloud alpha compute tpus tpu-vm create %TPU_NAME% --zone=%ZONE% --version=tpu-vm-pt-1.10 --accelerator-type=%TYPE%
 gcloud alpha compute tpus tpu-vm ssh %TPU_NAME% --zone %ZONE% --project %PROJECT_NAME%
@@ -55,7 +55,7 @@ make docker-rm
 Please refer to the following document to set virtual environment up according to your resources.  
 https://huggingface.co/docs/accelerate/v0.12.0/en/package_reference/cli#accelerate-config  
 
-There example files of default and deepspeed configuration are in `accelerate` directory.  
+There example files of default, DeepSpeed, and TPU configuration are in `accelerate` directory.  
 ```
 accelerate config
 ```
@@ -106,7 +106,7 @@ To use DeepSpeed, you need yaml and json configuration files. That is, you need 
 Please check the following documents:  
 https://huggingface.co/docs/accelerate/v0.12.0/en/usage_guides/deepspeed#deepspeed  
 
-There example files of default and deepspeed configuration are in `accelerate` directory.  
+There example files of default, DeepSpeed, and TPU configuration are in `accelerate` directory.  
 ###### accelerate launch
 ```
 accelerate launch --config_file accelerate/deepspeed_config.yaml train.py %CHECKPOINT%
@@ -115,7 +115,7 @@ accelerate launch --config_file accelerate/deepspeed_config.yaml train.py %CHECK
 ##### 3.1.4. TPU
 ###### accelerate launch
 ```
-accelerate launch --config_file accelerate/default_config.yaml train.py %CHECKPOINT%
+accelerate launch --config_file accelerate/tpu_config.yaml train.py %CHECKPOINT%
 ```
 
 #### 3.2. Test
