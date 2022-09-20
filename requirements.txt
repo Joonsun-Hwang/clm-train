@@ -7,6 +7,7 @@ evaluate
 gpustat
 nltk
 numpy
+nvidia-ml-py3
 pandas
 Pillow
 PyYAML
