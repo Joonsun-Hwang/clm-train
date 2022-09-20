@@ -50,3 +50,11 @@ docker-rmi:
 
 gpustat:
 	gpustat -cp -i .1
+
+test:
+	if [ ${CUDA_VERSION} = 10 ]; then \
+		echo ${CUDA_VERSION}; \
+	else if [ ${CUDA_VERSION} = 11 ]; then \
+			echo ${CUDA_VERSION}; \
+		fi \
+	fi
