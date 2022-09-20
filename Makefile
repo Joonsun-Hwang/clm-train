@@ -18,8 +18,10 @@ endif
 
 SH := /bin/bash
 WD := /root/clm-train
+CUDA_VERSION := $(shell nvcc --version | grep "release" | cut -c 33-34)
 
 docker-build:
+	cp ./docker/Dockerfile-CUDA${CUDA_VERSION} Dockerfile
 	docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ./docker
 
 docker-run:
@@ -48,6 +50,3 @@ docker-rmi:
 
 gpustat:
 	gpustat -cp -i .1
-
-test:
-	echo $(shell echo ${PWD})
