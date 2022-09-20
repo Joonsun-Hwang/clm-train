@@ -105,9 +105,9 @@ venv.bak/
 
 .bash_history
 
-*data*/**/*
-*checkpoint*/*
+data
+checkpoint
+output
 *.out
-output/*
 
-huggingface/*
+huggingface
