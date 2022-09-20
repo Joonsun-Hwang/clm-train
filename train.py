@@ -285,11 +285,11 @@ def train(args):
     if not args.model_parallel:
         model, optimizer, scheduler, train_loader, val_loader = args.accelerator.prepare(
             model, optimizer, scheduler, train_loader, val_loader)
+    exit()
 
     # Use accelerator.print to print only on the main process.
     args.accelerator.print('\n\n[-] Arguments:\n')
     args.accelerator.print(args)
-    args.accelerator.register_for_checkpointing(model, optimizer)
 
     # Train
     args.accelerator.wait_for_everyone()
@@ -353,7 +353,7 @@ def main():
     parser.add_argument('--model_type', type=str, default='CausalLM')
     parser.add_argument('--pretrained_model',
                         type=str,
-                        default='EleutherAI/polyglot-ko-1.3b')
+                        default='skt/ko-gpt-trinity-1.2B-v0.5')
     parser.add_argument('--revision', type=str, default='main')
     parser.add_argument('--add_adapter', action='store_true')
     parser.add_argument('--saved_model', type=str, default=None)

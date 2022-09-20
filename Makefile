@@ -18,7 +18,7 @@ endif
 
 SH := /bin/bash
 WD := /root/clm-train
-CUDA_VERSION := $(shell nvcc --version | grep "release" | cut -c 33-34)
+CUDA_VERSION := $(shell nvcc --version | grep "release" | cut -d ',' -f 2 | cut -c 9-11)
 
 docker-build:
 	cp ./docker/Dockerfile-CUDA${CUDA_VERSION} Dockerfile
