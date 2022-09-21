@@ -129,7 +129,6 @@ def test(args):
             'meteor': evaluate.load('meteor'),
         }
 
-
     test_loader, model = args.accelerator.prepare(test_loader, model)
 
     # Use accelerator.print to print only on the main process.

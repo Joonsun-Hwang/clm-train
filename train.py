@@ -285,7 +285,6 @@ def train(args):
     if not args.model_parallel:
         model, optimizer, scheduler, train_loader, val_loader = args.accelerator.prepare(
             model, optimizer, scheduler, train_loader, val_loader)
-    exit()
 
     # Use accelerator.print to print only on the main process.
     args.accelerator.print('\n\n[-] Arguments:\n')
@@ -321,7 +320,7 @@ def train(args):
         # Append history
         args.train_losses.append(train_loss)
         args.val_losses.append(val_loss)
-        args.val_scores.append(scores)
+        args.val_scores.append(scores['meteor']['meteor'])
 
         # Save checkpoint
         args.accelerator.wait_for_everyone()
@@ -331,13 +330,12 @@ def train(args):
         # Early Stopping
         args.current_epoch += 1
         if args.waiting > args.patient:
-            sys.exit(0)
+            exit()
 
         args.accelerator.print('\n\n')
 
 
 def main():
-    # TODO: There is a bug with using specific devices through CUDA_VISIBLE_DEVICES when distirbuted type is GPU with model parallel and deepspeed
     parser = argparse.ArgumentParser()
 
     # Data Parameters
@@ -353,14 +351,14 @@ def main():
     parser.add_argument('--model_type', type=str, default='CausalLM')
     parser.add_argument('--pretrained_model',
                         type=str,
-                        default='skt/ko-gpt-trinity-1.2B-v0.5')
+                        default='EleutherAI/polyglot-ko-1.3b')
     parser.add_argument('--revision', type=str, default='main')
     parser.add_argument('--add_adapter', action='store_true')
     parser.add_argument('--saved_model', type=str, default=None)
     parser.add_argument('checkpoint', type=str)
 
     # Training Parameters
-    parser.add_argument('--max_epoch', type=int, default=5)
+    parser.add_argument('--max_epoch', type=int, default=100)
     parser.add_argument('--num_warmup_steps', type=int, default=0)
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--max_batch_size_per_gpu', type=int, default=1)

@@ -41,7 +41,7 @@ def calc_gpu_free_memory(gpu_indices, extra_memory) -> dict:
     return free_memory
 
 
-def save_checkpoint(args: argparse.Namespace, model):
+def save_checkpoint(args: argparse.Namespace, model, criteria='score'):
     ckpt_dir = os.path.join('checkpoint')
     mkdir(ckpt_dir)
 
@@ -58,7 +58,18 @@ def save_checkpoint(args: argparse.Namespace, model):
             unwrapped_model.state_dict(),
             os.path.join(ckpt_dir, args.checkpoint + '.ckpt'))
 
-    if args.val_losses[-1] <= min(args.val_losses):
+    if len(args.val_losses) == 1:
+        save_best_checkpoint = True
+    elif criteria == 'loss' and args.val_losses[-1] < min(
+            args.val_losses[:-1]):
+        save_best_checkpoint = True
+    elif criteria == 'score' and args.val_scores[-1] > max(
+            args.val_scores[:-1]):
+        save_best_checkpoint = True
+    else:
+        save_best_checkpoint = False
+
+    if save_best_checkpoint:
         args.waiting = 0
         if args.add_adapter:
             if args.accelerator.is_main_process:
