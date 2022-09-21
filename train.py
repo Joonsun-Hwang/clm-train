@@ -330,7 +330,7 @@ def train(args):
         # Early Stopping
         args.current_epoch += 1
         if args.waiting > args.patient:
-            exit()
+            sys.exit()
 
         args.accelerator.print('\n\n')
 
