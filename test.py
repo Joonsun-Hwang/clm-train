@@ -39,13 +39,16 @@ def test_epoch(args, test_loader, model, tokenizer, metrics):
         predictions = outputs.logits.argmax(dim=-1)
 
         # Get predictions and references as sentences from token id
+        # TODO: Generalize to mini batch
+        references = labels[(labels!=-100)]
+        predictions = predictions[:, -len(references):]
         predictions = args.accelerator.pad_across_processes(
             predictions,
             dim=len(predictions.size()) - 1,
             pad_index=tokenizer.pad_token_id)
-        labels = args.accelerator.pad_across_processes(
-            labels,
-            dim=len(labels.size()) - 1,
+        references = args.accelerator.pad_across_processes(
+            references,
+            dim=len(references.size()) - 1,
             pad_index=tokenizer.pad_token_id)
         predictions, references = args.accelerator.gather(
             (predictions.contiguous(), labels.contiguous()))

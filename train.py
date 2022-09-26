@@ -104,13 +104,16 @@ def val_epoch(args, val_loader, model, tokenizer, metrics):
             labels = labels.to(list(args.device_map.values())[0])
 
         # Make predictions and references to sentences from token id
+        # TODO: Generalize to mini batch
+        references = labels[(labels!=-100)]
+        predictions = predictions[:, -len(references):]
         predictions = args.accelerator.pad_across_processes(
             predictions,
             dim=len(predictions.size()) - 1,
             pad_index=tokenizer.pad_token_id)
-        labels = args.accelerator.pad_across_processes(
-            labels,
-            dim=len(labels.size()) - 1,
+        references = args.accelerator.pad_across_processes(
+            references,
+            dim=len(references.size()) - 1,
             pad_index=tokenizer.pad_token_id)
         predictions, references = args.accelerator.gather(
             (predictions.contiguous(), labels.contiguous()))
