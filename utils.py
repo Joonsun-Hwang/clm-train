@@ -41,7 +41,7 @@ def calc_gpu_free_memory(gpu_indices, extra_memory) -> dict:
     return free_memory
 
 
-def save_checkpoint(args: argparse.Namespace, model, criteria='score'):
+def save_checkpoint(args: argparse.Namespace, model, criteria='loss'):
     ckpt_dir = os.path.join('checkpoint')
     mkdir(ckpt_dir)
 

@@ -69,8 +69,9 @@ It is recommended to use all data after preprocessing it in advance, and not rec
 
 The format of `*.jsonl` files are like this:
 ```
-{'input_text': 'I am a king.'}
-{'input_text': 'I like a game called Lost Ark.'}
+{"prompt": "<prompt text>", "completion": "<ideal generated text>"}
+{"prompt": "<prompt text>", "completion": "<ideal generated text>"}
+{"prompt": "<prompt text>", "completion": "<ideal generated text>"}
 ...
 ```
 
