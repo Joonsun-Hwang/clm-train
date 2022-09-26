@@ -3,17 +3,14 @@
 
 import argparse
 import os
-import random
 import sys
 import time
 
 import accelerate
 import evaluate
-import numpy as np
 import torch
-import torch.nn as nn
 from accelerate import (Accelerator, DistributedType, infer_auto_device_map,
-                        init_empty_weights, load_checkpoint_and_dispatch)
+                        init_empty_weights)
 from tqdm import tqdm
 from transformers import (AutoConfig, AutoModelForCausalLM,
                           AutoModelForPreTraining, AutoTokenizer,
@@ -35,8 +32,8 @@ def train_epoch(args, train_loader, model, optimizer, scheduler):
                  file=sys.stdout,
                  disable=not args.accelerator.is_local_main_process)):
         # Fetch inputs and labels
-        inputs = dict(map(lambda x: (x[0], x[1][:, :-1]), batch.items()))
-        labels = batch.input_ids[:, 1:]
+        labels = batch.pop('labels')
+        inputs = batch
 
         # TODO: Debug for cuda device error.
         if args.model_parallel:
@@ -83,8 +80,8 @@ def val_epoch(args, val_loader, model, tokenizer, metrics):
                  file=sys.stdout,
                  disable=not args.accelerator.is_local_main_process)):
         # Fetch inputs and labels
-        inputs = dict(map(lambda x: (x[0], x[1][:, :-1]), batch.items()))
-        labels = batch.input_ids[:, 1:]
+        labels = batch.pop('labels')
+        inputs = batch
 
         if args.model_parallel:
             inputs = dict(
@@ -146,7 +143,6 @@ def train(args):
         args.pretrained_model,
         revision=args.revision,
         cache_dir=os.environ['TRANSFORMERS_CACHE'])
-
     if args.special_tokens_dict and args.special_tokens_dict[
             'additional_special_tokens']:
         num_added_toks = tokenizer.add_special_tokens(args.special_tokens_dict)

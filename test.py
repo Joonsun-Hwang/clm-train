@@ -3,11 +3,8 @@
 
 import argparse
 import os
-import random
 import sys
-import time
 
-import accelerate
 import evaluate
 import torch
 from accelerate import Accelerator
@@ -29,8 +26,8 @@ def test_epoch(args, test_loader, model, tokenizer, metrics):
                  file=sys.stdout,
                  disable=not args.accelerator.is_local_main_process)):
         # Fetch inputs and labels
-        inputs = dict(map(lambda x: (x[0], x[1][:, :-1]), batch.items()))
-        labels = batch.input_ids[:, 1:].to(args.device)
+        labels = batch.pop('labels')
+        inputs = batch
 
         # Forward inputs and calculate loss
         with torch.no_grad():
@@ -158,14 +155,13 @@ def main():
     # Model Parameters
     parser.add_argument('--pretrained_model',
                         type=str,
-                        default='skt/ko-gpt-trinity-1.2B-v0.5')
-    parser.add_argument('--revision', type=str, default='main')
+                        default='kakaobrain/kogpt')
+    parser.add_argument('--revision', type=str, default='KoGPT6B-ryan1.5b')
     parser.add_argument('--add_adapter', action='store_true')
     parser.add_argument('--saved_model', type=str, default=None)
 
     # Testing Parameters
-    parser.add_argument('--batch_size', type=int,
-                        default=1)  # 1 process: Max 4; 2 process: Max 1
+    parser.add_argument('--batch_size', type=int, default=1)
 
     # Multi-process Parameters
     parser.add_argument('--mixed_precision',

@@ -1,12 +1,8 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import json
 import os
-from ast import literal_eval
 
-import numpy as np
-import torch
 from accelerate import DistributedType
 from datasets import load_dataset
 from torch.utils.data import DataLoader
@@ -37,15 +33,18 @@ class CausalDataset():
         # If you change the function in dataset.map() after you run the previous code once, you should remove cache huggingface/datasets
         self.tokenized_dataset = self.dataset.map(
             self._tokenize_function,
-            batched=True,
-            remove_columns=['input_text'])
+            remove_columns=['prompt', 'completion'])
 
     def _tokenize_function(self, examples):
         # max_length=None => use the model max length (it's actually the default)
-        outputs = self.tokenizer(examples['input_text'],
-                                 truncation=True,
-                                 max_length=self.args.max_len)
-        return outputs
+        encoded = self.tokenizer(examples['prompt'] + ' ' + examples['completion'],
+                                  truncation=True,
+                                  max_length=self.args.max_len)
+        encoded['labels'] = self.tokenizer.encode(' ' + examples['completion'],
+                                  truncation=True,
+                                  max_length=self.args.max_len)
+        encoded['labels'] = [-100] * (len(encoded['input_ids']) - len(encoded['labels'])) + encoded['labels']
+        return encoded
 
     def _collate_fn(self, examples):
         # On TPU it's best to pad everything to the same length or training will be very slow.
