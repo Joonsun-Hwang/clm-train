@@ -330,6 +330,7 @@ def train(args):
         # Early Stopping
         args.current_epoch += 1
         if args.waiting > args.patient:
+            args.accelerator.wait_for_everyone()
             sys.exit()
 
         args.accelerator.print('\n\n')
@@ -351,7 +352,7 @@ def main():
     parser.add_argument('--model_type', type=str, default='CausalLM')
     parser.add_argument('--pretrained_model',
                         type=str,
-                        default='EleutherAI/polyglot-ko-1.3b')
+                        default='skt/ko-gpt-trinity-1.2B-v0.5')
     parser.add_argument('--revision', type=str, default='main')
     parser.add_argument('--add_adapter', action='store_true')
     parser.add_argument('--saved_model', type=str, default=None)
@@ -363,7 +364,7 @@ def main():
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--max_batch_size_per_gpu', type=int, default=1)
     parser.add_argument('--loss_type', type=str, default='BCE')
-    parser.add_argument('--learning_rate', type=float, default=1e-4)
+    parser.add_argument('--learning_rate', type=float, default=5e-5)
     parser.add_argument('--weight_decay', type=float, default=1e-2)
     parser.add_argument('--scheduler_type', type=str, default='linear')
     parser.add_argument('--grad_clip', type=float, default=10.)
@@ -433,7 +434,7 @@ def main():
         args.extra_memory = 0
 
     # Additional special tokens
-    args.special_tokens_dict = {'additional_special_tokens': ['User:', 'AI:']}
+    args.special_tokens_dict = {'additional_special_tokens': ['<|User|>', '<|AI|>']}
 
     logging.set_verbosity_error()
 
