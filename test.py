@@ -40,7 +40,7 @@ def test_epoch(args, test_loader, model, tokenizer, metrics):
 
         # Make predictions and references to sentences from token ids
         # TODO: Generalize to mini batch
-        references = labels[(labels!=-100)].unsqueeze(0)
+        references = labels[(labels != -100)].unsqueeze(0)
         predictions = predictions[:, -references.size(1):]
 
         references = args.accelerator.pad_across_processes(
@@ -154,13 +154,13 @@ def main():
     # Data Parameters
     parser.add_argument('--data_dir', type=str, default='data')
     parser.add_argument('--cache_root_dir', type=str, default='huggingface')
-    parser.add_argument('--max_len', type=int, default=1024)
+    parser.add_argument('--max_len', type=int, default=2048)
 
     # Model Parameters
     parser.add_argument('--pretrained_model',
                         type=str,
-                        default='kakaobrain/kogpt')
-    parser.add_argument('--revision', type=str, default='KoGPT6B-ryan1.5b')
+                        default='EleutherAI/polyglot-ko-1.3b')
+    parser.add_argument('--revision', type=str, default='main')
     parser.add_argument('--add_adapter', action='store_true')
     parser.add_argument('--saved_model', type=str, default=None)
 
@@ -195,7 +195,9 @@ def main():
     args.device = args.accelerator.device
 
     # Additional special tokens
-    args.special_tokens_dict = {'additional_special_tokens': ['User:', 'AI:']}
+    args.special_tokens_dict = {
+        'additional_special_tokens': ['<|User|>', '<|AI|>']
+    }
 
     logging.set_verbosity_error()
 

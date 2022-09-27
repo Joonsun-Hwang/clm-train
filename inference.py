@@ -67,53 +67,33 @@ def inference(args):
     # Prompt & stop word
     stop_word = ['\n'] + args.special_tokens_dict['additional_special_tokens']
     stop_word_pattern = '|'.join(stop_word)
-    prompt_text = '''<information>
-AI의 이름은 한유아이다
-AI는 우주에서 태어났다
-AI는 20대 여성이다
-AI는 밝고 긍정적인 성격을 가졌다
-AI는 저번주 금요일에 스파이더맨 영화를 친구와 같이 봤다
-AI는 지금 식물에 관련된 책을 읽고 있다
-
-<knowledge>
-스파이더맨 주인공의 이름은 피터 파커이다
-스파이더맨은 아이언맨으로부터 슈트를 받았다
-
-###
-<dialogue>
-User: 안녕!
-AI(중립): 안녕하세요~
-User: 나는 황준선이라고 해. 넌 이름이 뭐야?
-AI: 저는 한유아라고 해요! 만나서 너무 반가워요 :)
-###
-
-###
-<dialogue>
-User: 무슨 책 읽고 있어?
-AI: 식물에 관련된 책이에요~ 제가 식물을 좋아해서요!
-###
-
-###
-<dialogue>
+    prompt_text = '''<|User|>: 안녕? 넌 이름이 뭐야?
+<|AI|>: 안녕하세요! 제 이름은 한유아에요! 만나서 반가워요~
+<|User|>: 지금 뭐하고 있어?
+<|AI|>: 저는 지금 스파이더맨 영화 보고있어요!
 '''
 
-    while (True):
-        input_text = input('User: ')
-        input_text = prompt_text + 'User: ' + input_text + '\nAI: '
+    while True:
+        user_utterance = input('<|User|>: ')
+        input_text = prompt_text + '<|User|>: ' + user_utterance + '\n<|AI|>: '
 
         inference_time = time.time()
         input_ids = tokenizer.encode(input_text,
                                      return_tensors='pt').to(args.device)
         outputs = model.generate(input_ids,
-                                 max_length=input_ids.size(1)+32,
+                                 max_new_tokens=32,
                                  num_beams=5,
                                  no_repeat_ngram_size=2)
         # outputs = model.generate(input_ids, do_sample=True, top_k=50, no_repeat_ngram_size=2)
         # outputs = model.generate(input_ids, do_sample=True, top_k=0, top_p=0.9, no_repeat_ngram_size=2)
         output_text = tokenizer.batch_decode(outputs)[0]
+        output_text = output_text.split(user_utterance)[-1].strip().split(
+            '\n')[0].replace('<|AI|>', '').replace(':', '').strip()
 
-        print('AI:', output_text)
+        args.accelerator.print('<|AI|>:', output_text)
         args.accelerator.print('Inference Time:', time.time() - inference_time)
+
+        prompt_text += '<|User|>: ' + input_text + '\n<|AI|>: ' + output_text + '\n'
 
 
 def main():
@@ -160,9 +140,10 @@ def main():
                                    mixed_precision=args.mixed_precision)
     args.device = args.accelerator.device
 
-    # Additional special tokens
-    args.special_tokens_dict = {'additional_special_tokens': []}
-    # args.special_tokens_dict = {'additional_special_tokens': ['User:', 'AI:']}
+    # Additional special tokens\
+    args.special_tokens_dict = {
+        'additional_special_tokens': ['<|User|>', '<|AI|>']
+    }
 
     logging.set_verbosity_error()
 
