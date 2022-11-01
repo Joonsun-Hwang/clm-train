@@ -41,7 +41,7 @@ def calc_gpu_free_memory(gpu_indices, extra_memory) -> dict:
     return free_memory
 
 
-def save_checkpoint(args: argparse.Namespace, model, criteria='loss'):
+def save_checkpoint(args: argparse.Namespace, tokenizer, model, criteria='loss'):
     ckpt_dir = os.path.join('checkpoint')
     mkdir(ckpt_dir)
 
@@ -70,14 +70,6 @@ def save_checkpoint(args: argparse.Namespace, model, criteria='loss'):
         save_best_checkpoint = False
 
     if save_best_checkpoint:
-        args.waiting = 0
-        if args.add_adapter:
-            if args.accelerator.is_main_process:
-                unwrapped_model.save_adapter(
-                    os.path.join(ckpt_dir, 'BEST_adapter_' + args.checkpoint),
-                    args.adapter_name)
-        else:
-            args.accelerator.save(
-                unwrapped_model.state_dict(),
-                os.path.join(ckpt_dir, 'BEST_' + args.checkpoint + '.ckpt'))
+        tokenizer.save_pretrained(os.path.join(ckpt_dir, 'BEST_' + args.checkpoint))
+        unwrapped_model.save_pretrained(os.path.join(ckpt_dir, 'BEST_' + args.checkpoint))
         print('\t[!] The best checkpoint is updated.')

@@ -88,6 +88,8 @@ def test(args):
         revision=args.revision,
         cache_dir=os.environ['TRANSFORMERS_CACHE'])
 
+    # Additional special tokens
+    args.special_tokens_dict = {'additional_special_tokens': []}
     if args.special_tokens_dict and args.special_tokens_dict[
             'additional_special_tokens']:
         num_added_toks = tokenizer.add_special_tokens(args.special_tokens_dict)
@@ -108,20 +110,18 @@ def test(args):
             'additional_special_tokens']:
         model.resize_token_embeddings(len(tokenizer))
 
-    if args.add_adapter and args.saved_model:
+    if args.add_adapter:
+        assert args.saved_model
         args.adapter_name = model.load_adapter(
-            os.path.join('checkpoint', 'BEST_adapter_' + args.saved_model))
+            os.path.join('instance', 'checkpoint', 'BEST_adapter_' + args.saved_model))
         model.set_active_adapters(args.adapter_name)
         args.accelerator.print('[!] Saved checkpoint is loaded')
     elif args.saved_model:
         model.load_state_dict(
-            torch.load(
-                os.path.join('checkpoint',
-                             'BEST_' + args.saved_model + '.ckpt')))
-        args.accelerator.print('[!] Saved checkpoint is loaded')
-    elif args.add_adapter:
-        model.add_adapter('adapter_' + args.saved_model)
-        model.set_active_adapters(args.adapter_name)
+                torch.load(
+                    os.path.join('instance', 'checkpoint',
+                                'BEST_' + args.saved_model + '.ckpt')))
+    args.accelerator.print('[!] Saved checkpoint is loaded')
 
     # Metrics
     with args.accelerator.main_process_first():
@@ -193,12 +193,6 @@ def main():
     args.accelerator = Accelerator(cpu=args.cpu,
                                    mixed_precision=args.mixed_precision)
     args.device = args.accelerator.device
-
-    # Additional special tokens
-    args.special_tokens_dict = {
-        'additional_special_tokens': ['<|User|>', '<|AI|>']
-    }
-
     logging.set_verbosity_error()
 
     test(args)

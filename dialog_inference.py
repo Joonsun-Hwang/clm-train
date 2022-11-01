@@ -6,13 +6,14 @@ import os
 import re
 import time
 
-from accelerate import Accelerator
-import deepspeed
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, logging, pipeline
+from transformers import AutoModelForCausalLM, AutoTokenizer, logging
+
+from accelerate import Accelerator
+
 
 def inference(args):
-    pipeline_load_time = time.time()
+    model_load_time = time.time()
 
     # Tokenizer
     tokenizer = AutoTokenizer.from_pretrained(
@@ -21,7 +22,7 @@ def inference(args):
         cache_dir=os.environ['TRANSFORMERS_CACHE'])
 
     # Additional special tokens
-    args.special_tokens_dict = {'additional_special_tokens': []}
+    args.special_tokens_dict = {'additional_special_tokens': ['<|User|>', '<|AI|>']}
     if args.special_tokens_dict and args.special_tokens_dict[
             'additional_special_tokens']:
         num_added_toks = tokenizer.add_special_tokens(args.special_tokens_dict)
@@ -30,76 +31,72 @@ def inference(args):
     model = AutoModelForCausalLM.from_pretrained(
         args.pretrained_model,
         revision=args.revision,
+        # torch_dtype='auto',  # There is a bug for 'facebook/opt'
+        low_cpu_mem_usage=True,
         cache_dir=os.environ['TRANSFORMERS_CACHE'])
 
     if args.special_tokens_dict and args.special_tokens_dict[
             'additional_special_tokens']:
         model.resize_token_embeddings(len(tokenizer))
 
-    if args.add_adapter:
-        assert args.saved_model
+    if args.add_adapter and args.saved_model:
         args.adapter_name = model.load_adapter(
-            os.path.join('instance', 'checkpoint', 'BEST_adapter_' + args.saved_model))
+            os.path.join('checkpoint', 'BEST_adapter_' + args.saved_model))
         model.set_active_adapters(args.adapter_name)
+        args.accelerator.print('[!] Saved checkpoint is loaded')
     elif args.saved_model:
         model.load_state_dict(
-                torch.load(
-                    os.path.join('instance', 'checkpoint',
-                                'BEST_' + args.saved_model + '.ckpt')))
-    args.accelerator.print('[!] Saved checkpoint is loaded')
+            torch.load(
+                os.path.join('checkpoint',
+                             'BEST_' + args.saved_model + '.ckpt')))
+        args.accelerator.print('[!] Saved checkpoint is loaded')
+    elif args.add_adapter:
+        model.add_adapter('adapter_' + args.saved_model)
+        model.set_active_adapters(args.adapter_name)
 
-    # Prepare pipeline
-    generator = pipeline('text-generation', tokenizer=tokenizer, model=model)
-    generator.model = deepspeed.init_inference(generator.model, mp_size=1, dtype=torch.float, replace_method='auto', replace_with_kernel_inject=True)
-
-    args.accelerator.print('Pipeline Loading Time:',
-                           time.time() - pipeline_load_time)
+    model = args.accelerator.prepare(model)
+    args.accelerator.print('Model Loading Time:',
+                           time.time() - model_load_time)
 
     # Use accelerator.print to print only on the main process.
     args.accelerator.print('\n\n[-] Arguments:\n')
     args.accelerator.print(args)
 
     # Inference
+    args.accelerator.wait_for_everyone()
     args.accelerator.print('\n\n[-] Start inference the model\n')
 
     # Prompt & stop word
     stop_word = ['\n'] + args.special_tokens_dict['additional_special_tokens']
     stop_word_pattern = '|'.join(stop_word)
-    init_prompt = ''''''
+    prompt_text = '''<|User|>: 안녕? 넌 이름이 뭐야?
+<|AI|>: 안녕하세요! 제 이름은 한유아에요! 만나서 반가워요~
+<|User|>: 지금 뭐하고 있어?
+<|AI|>: 저는 지금 스파이더맨 영화 보고있어요!
+'''
 
     while True:
-        user_input = input('prompt: ')
-        input_text = init_prompt + user_input
+        user_utterance = input('<|User|>: ')
+        input_text = prompt_text + '<|User|>: ' + user_utterance + '\n<|AI|>: '
 
         inference_time = time.time()
-        outputs = pipeline(input_text,
-                                 max_new_tokens=256,
+        input_ids = tokenizer.encode(input_text,
+                                     return_tensors='pt').to(args.device)
+        outputs = model.generate(input_ids,
+                                 max_new_tokens=32,
                                  num_beams=5,
                                  no_repeat_ngram_size=2)
-        args.accelerator.print('Beam Search Inference Time:', time.time() - inference_time)
-        output_texts = tokenizer.batch_decode(outputs)
+        # outputs = model.generate(input_ids, do_sample=True, top_k=50, no_repeat_ngram_size=2)
+        # outputs = model.generate(input_ids, do_sample=True, top_k=0, top_p=0.9, no_repeat_ngram_size=2)
+        output_text = tokenizer.batch_decode(outputs)[0]
+        output_text = output_text.split(user_utterance)[-1].strip().split(
+            '\n')[0].replace('<|AI|>', '').replace(':', '').strip()
 
-        inference_time = time.time()
-        outputs = pipeline(input_text, max_new_tokens=256, do_sample=True, top_k=50, top_p=0.95, no_repeat_ngram_size=3, num_return_sequences=5)
-        args.accelerator.print('Nucleus Sampling Inference Time:', time.time() - inference_time)
-        output_texts += tokenizer.batch_decode(outputs)
+        args.accelerator.print('<|AI|>:', output_text)
+        args.accelerator.print('Inference Time:', time.time() - inference_time)
 
-        args.accelerator.print()
-        for idx, output_text in enumerate(output_texts):
-            args.accelerator.print('candidate ' + str(idx))
-            args.accelerator.print(output_text)
-            args.accelerator.print()
+        prompt_text += '<|User|>: ' + input_text + '\n<|AI|>: ' + output_text + '\n'
 
-
-# examples:
-
-# 많이 힘들었냐는 누군가의 질문에 쉽사리 대답하지 못할 때가 많아요. 길었던 수많은 밤들을 어떠한 말로도 설명할 수가 없을 것 같아서.
-# 양치기 산티아고가 양떼를 데리고 버려진 낡은 교회 앞에 다다랐을 때는 날이 저물고 있었다. 지붕은 무너진지 오래였고, 성물 보관소 자리에는 커다란 무화과나무 한 그루가 서 있었다.\n그는 그곳에서 하룻밤을 보내기로 했다. 양들을 부서진 문을 통해 안으로 들여보낸 뒤, 도망치지 못하도록 문에 널빤지를 댔다. 근처에 늑대는 없었지만, 밤사이 양이 한마리라도 도망치게 되면 그 다음날은 온종일 잃어버린 양을 찾아다녀야 할 것이기 때문이었다.
-# '''
-# 우리는 모두 땅에서 태어났다.
-# 햇살이 문득 따사로운 날들이 있다.
-# 이것은 어느 긴긴 밤에 시작된 이야기다.
-# '''
 
 def main():
     # python test.py
@@ -113,7 +110,7 @@ def main():
     # Model Parameters
     parser.add_argument('--pretrained_model',
                         type=str,
-                        default='EleutherAI/polyglot-ko-3.8b')
+                        default='EleutherAI/polyglot-ko-1.3b')
     parser.add_argument('--revision', type=str, default='main')
     parser.add_argument('--add_adapter', action='store_true')
     parser.add_argument('--saved_model', type=str, default=None)

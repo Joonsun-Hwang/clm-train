@@ -147,6 +147,9 @@ def train(args):
         args.pretrained_model,
         revision=args.revision,
         cache_dir=os.environ['TRANSFORMERS_CACHE'])
+
+    # Additional special tokens
+    args.special_tokens_dict = {'additional_special_tokens': []}
     if args.special_tokens_dict and args.special_tokens_dict[
             'additional_special_tokens']:
         num_added_toks = tokenizer.add_special_tokens(args.special_tokens_dict)
@@ -214,9 +217,13 @@ def train(args):
             'additional_special_tokens']:
         model.resize_token_embeddings(len(tokenizer))
 
-    if args.add_adapter and args.saved_model:
-        args.adapter_name = model.load_adapter(
-            os.path.join('checkpoint', 'BEST_adapter_' + args.saved_model))
+    if args.add_adapter:
+        if args.saved_model:
+            args.adapter_name = model.load_adapter(
+                os.path.join('checkpoint', 'BEST_adapter_' + args.saved_model))
+        else:
+            args.adapter_name = args.checkpoint
+            model.add_adapter(args.adapter_name)
         model.train_adapter(args.adapter_name)
         args.accelerator.print('[!] Saved checkpoint is loaded')
     elif args.saved_model:
@@ -225,10 +232,6 @@ def train(args):
                 os.path.join('checkpoint',
                              'BEST_' + args.saved_model + '.ckpt')))
         args.accelerator.print('[!] Saved checkpoint is loaded')
-    elif args.add_adapter:
-        args.adapter_name = args.checkpoint
-        model.add_adapter(args.adapter_name)
-        model.train_adapter(args.adapter_name)
 
     if args.accelerator.distributed_type == DistributedType.TPU:
         model.tie_weights()
@@ -325,7 +328,7 @@ def train(args):
         # Save checkpoint
         args.accelerator.wait_for_everyone()
         if args.accelerator.is_local_main_process:
-            save_checkpoint(args, model)
+            save_checkpoint(args, tokenizer, model)
 
         # Early Stopping
         args.current_epoch += 1
@@ -352,7 +355,7 @@ def main():
     parser.add_argument('--model_type', type=str, default='CausalLM')
     parser.add_argument('--pretrained_model',
                         type=str,
-                        default='EleutherAI/polyglot-ko-1.3b')
+                        default='EleutherAI/polyglot-ko-3.8b')
     parser.add_argument('--revision', type=str, default='main')
     parser.add_argument('--add_adapter', action='store_true')
     parser.add_argument('--saved_model', type=str, default=None)
@@ -364,7 +367,7 @@ def main():
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--max_batch_size_per_gpu', type=int, default=1)
     parser.add_argument('--loss_type', type=str, default='BCE')
-    parser.add_argument('--learning_rate', type=float, default=5e-5)
+    parser.add_argument('--learning_rate', type=float, default=1e-6)
     parser.add_argument('--weight_decay', type=float, default=1e-2)
     parser.add_argument('--scheduler_type', type=str, default='linear')
     parser.add_argument('--grad_clip', type=float, default=10.)
@@ -432,11 +435,6 @@ def main():
 
     if not args.model_parallel:
         args.extra_memory = 0
-
-    # Additional special tokens
-    args.special_tokens_dict = {
-        'additional_special_tokens': ['<|User|>', '<|AI|>']
-    }
 
     logging.set_verbosity_error()
 
