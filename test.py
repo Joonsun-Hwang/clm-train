@@ -113,14 +113,15 @@ def test(args):
     if args.add_adapter:
         assert args.saved_model
         args.adapter_name = model.load_adapter(
-            os.path.join('instance', 'checkpoint', 'BEST_adapter_' + args.saved_model))
+            os.path.join('instance', 'checkpoint',
+                         'BEST_adapter_' + args.saved_model))
         model.set_active_adapters(args.adapter_name)
         args.accelerator.print('[!] Saved checkpoint is loaded')
     elif args.saved_model:
         model.load_state_dict(
-                torch.load(
-                    os.path.join('instance', 'checkpoint',
-                                'BEST_' + args.saved_model + '.ckpt')))
+            torch.load(
+                os.path.join('instance', 'checkpoint',
+                             'BEST_' + args.saved_model + '.ckpt')))
     args.accelerator.print('[!] Saved checkpoint is loaded')
 
     # Metrics

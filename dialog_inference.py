@@ -22,7 +22,9 @@ def inference(args):
         cache_dir=os.environ['TRANSFORMERS_CACHE'])
 
     # Additional special tokens
-    args.special_tokens_dict = {'additional_special_tokens': ['<|User|>', '<|AI|>']}
+    args.special_tokens_dict = {
+        'additional_special_tokens': ['<|User|>', '<|AI|>']
+    }
     if args.special_tokens_dict and args.special_tokens_dict[
             'additional_special_tokens']:
         num_added_toks = tokenizer.add_special_tokens(args.special_tokens_dict)

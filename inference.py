@@ -11,6 +11,7 @@ import deepspeed
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, logging, pipeline
 
+
 def inference(args):
     pipeline_load_time = time.time()
 
@@ -39,18 +40,23 @@ def inference(args):
     if args.add_adapter:
         assert args.saved_model
         args.adapter_name = model.load_adapter(
-            os.path.join('instance', 'checkpoint', 'BEST_adapter_' + args.saved_model))
+            os.path.join('checkpoint', 'BEST_adapter_' + args.saved_model))
         model.set_active_adapters(args.adapter_name)
+        args.accelerator.print('[!] Saved checkpoint is loaded')
     elif args.saved_model:
-        model.load_state_dict(
-                torch.load(
-                    os.path.join('instance', 'checkpoint',
-                                'BEST_' + args.saved_model + '.ckpt')))
+        tokenizer = AutoTokenizer.from_pretrained(
+            os.path.join('checkpoint', 'BEST_' + args.saved_model))
+        model = AutoModelForCausalLM.from_pretrained(
+            os.path.join('checkpoint', 'BEST_' + args.saved_model))
     args.accelerator.print('[!] Saved checkpoint is loaded')
 
     # Prepare pipeline
     generator = pipeline('text-generation', tokenizer=tokenizer, model=model)
-    generator.model = deepspeed.init_inference(generator.model, mp_size=1, dtype=torch.float, replace_method='auto', replace_with_kernel_inject=True)
+    # generator.model = deepspeed.init_inference(generator.model,
+    #                                            mp_size=1,
+    #                                            dtype=torch.float,
+    #                                            replace_method='auto',
+    #                                            replace_with_kernel_inject=True)
 
     args.accelerator.print('Pipeline Loading Time:',
                            time.time() - pipeline_load_time)
@@ -73,15 +79,23 @@ def inference(args):
 
         inference_time = time.time()
         outputs = pipeline(input_text,
-                                 max_new_tokens=256,
-                                 num_beams=5,
-                                 no_repeat_ngram_size=2)
-        args.accelerator.print('Beam Search Inference Time:', time.time() - inference_time)
+                           max_new_tokens=256,
+                           num_beams=5,
+                           no_repeat_ngram_size=2)
+        args.accelerator.print('Beam Search Inference Time:',
+                               time.time() - inference_time)
         output_texts = tokenizer.batch_decode(outputs)
 
         inference_time = time.time()
-        outputs = pipeline(input_text, max_new_tokens=256, do_sample=True, top_k=50, top_p=0.95, no_repeat_ngram_size=3, num_return_sequences=5)
-        args.accelerator.print('Nucleus Sampling Inference Time:', time.time() - inference_time)
+        outputs = pipeline(input_text,
+                           max_new_tokens=256,
+                           do_sample=True,
+                           top_k=50,
+                           top_p=0.95,
+                           no_repeat_ngram_size=3,
+                           num_return_sequences=5)
+        args.accelerator.print('Nucleus Sampling Inference Time:',
+                               time.time() - inference_time)
         output_texts += tokenizer.batch_decode(outputs)
 
         args.accelerator.print()
@@ -100,6 +114,10 @@ def inference(args):
 # 햇살이 문득 따사로운 날들이 있다.
 # 이것은 어느 긴긴 밤에 시작된 이야기다.
 # '''
+
+# poetry examples:
+# <|title|>\n달이 떴다고 전화를 주시다니요\n\n<|lyrics|>\n세상에\n강변에 달빛이 곱다고\n전화를 다 주시다니요\n
+
 
 def main():
     # python test.py

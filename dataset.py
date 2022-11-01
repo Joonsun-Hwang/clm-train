@@ -32,18 +32,19 @@ class CausalDataset():
                                     cache_dir=os.environ['HF_DATASETS_CACHE'])
         # If you change the function in dataset.map() after you run the previous code once, you should remove cache huggingface/datasets
         self.tokenized_dataset = self.dataset.map(
-            self._tokenize_function,
-            remove_columns=['prompt', 'completion'])
+            self._tokenize_function, remove_columns=['prompt', 'completion'])
 
     def _tokenize_function(self, examples):
         # max_length=None => use the model max length (it's actually the default)
-        encoded = self.tokenizer(examples['prompt'] + ' ' + examples['completion'],
-                                  truncation=True,
-                                  max_length=self.args.max_len)
+        encoded = self.tokenizer(examples['prompt'] + ' ' +
+                                 examples['completion'],
+                                 truncation=True,
+                                 max_length=self.args.max_len)
         encoded['labels'] = self.tokenizer.encode(' ' + examples['completion'],
-                                  truncation=True,
-                                  max_length=self.args.max_len)
-        encoded['labels'] = [-100] * (len(encoded['input_ids']) - len(encoded['labels'])) + encoded['labels']
+                                                  truncation=True,
+                                                  max_length=self.args.max_len)
+        encoded['labels'] = [-100] * (len(encoded['input_ids']) - len(
+            encoded['labels'])) + encoded['labels']
         return encoded
 
     def _collate_fn(self, examples):
