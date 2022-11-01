@@ -3,10 +3,11 @@ import os
 import shutil
 from glob import glob
 
-import accelerate
 import numpy as np
 import nvidia_smi
 import torch
+
+import accelerate
 
 
 def mkdir(dir_name: str):

@@ -6,10 +6,11 @@ import os
 import re
 import time
 
-from accelerate import Accelerator
 import deepspeed
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, logging, pipeline
+
+from accelerate import Accelerator
 
 
 def inference(args):
@@ -78,7 +79,7 @@ def inference(args):
         input_text = init_prompt + user_input
 
         inference_time = time.time()
-        outputs = pipeline(input_text,
+        outputs = generator(input_text,
                            max_new_tokens=256,
                            num_beams=5,
                            no_repeat_ngram_size=2)
@@ -87,7 +88,7 @@ def inference(args):
         output_texts = tokenizer.batch_decode(outputs)
 
         inference_time = time.time()
-        outputs = pipeline(input_text,
+        outputs = generator(input_text,
                            max_new_tokens=256,
                            do_sample=True,
                            top_k=50,

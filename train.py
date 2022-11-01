@@ -6,16 +6,16 @@ import os
 import sys
 import time
 
-import accelerate
 import evaluate
 import torch
-from accelerate import (Accelerator, DistributedType, infer_auto_device_map,
-                        init_empty_weights)
 from tqdm import tqdm
 from transformers import (AutoConfig, AutoModelForCausalLM,
                           AutoModelForPreTraining, AutoTokenizer,
                           get_scheduler, logging)
 
+import accelerate
+from accelerate import (Accelerator, DistributedType, infer_auto_device_map,
+                        init_empty_weights)
 from dataset import CausalDataset
 from utils import calc_gpu_free_memory, save_checkpoint
 

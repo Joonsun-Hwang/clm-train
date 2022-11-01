@@ -3,9 +3,10 @@
 
 import os
 
-from accelerate import DistributedType
 from datasets import load_dataset
 from torch.utils.data import DataLoader
+
+from accelerate import DistributedType
 
 
 class CausalDataset():

@@ -7,10 +7,10 @@ import sys
 
 import evaluate
 import torch
-from accelerate import Accelerator
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, logging
 
+from accelerate import Accelerator
 from dataset import CausalDataset
 
 
