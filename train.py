@@ -17,6 +17,7 @@ import accelerate
 from accelerate import (Accelerator, DistributedType, infer_auto_device_map,
                         init_empty_weights)
 from dataset import CausalDataset
+from model import GPTNeoXPrefixForCausalLM
 from utils import calc_gpu_free_memory, save_checkpoint
 
 
@@ -166,6 +167,9 @@ def train(args):
         cache_dir=os.environ['TRANSFORMERS_CACHE'])
 
     # Model
+    if args.p_tuning:
+        model = GPTNeoXPrefixForCausalLM
+
     if args.model_parallel:
         with init_empty_weights():
             if args.model_type == 'CausalLM':
@@ -358,6 +362,7 @@ def main():
                         default='EleutherAI/polyglot-ko-3.8b')
     parser.add_argument('--revision', type=str, default='main')
     parser.add_argument('--add_adapter', action='store_true')
+    parser.add_argument('--p_tuning', action='store_true')
     parser.add_argument('--saved_model', type=str, default=None)
     parser.add_argument('checkpoint', type=str)
 

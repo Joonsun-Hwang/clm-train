@@ -52,7 +52,10 @@ def inference(args):
     args.accelerator.print('[!] Saved checkpoint is loaded')
 
     # Prepare pipeline
-    generator = pipeline('text-generation', tokenizer=tokenizer, model=model)
+    generator = pipeline('text-generation',
+                         tokenizer=tokenizer,
+                         model=model,
+                         device=args.local_rank)
     # generator.model = deepspeed.init_inference(generator.model,
     #                                            mp_size=1,
     #                                            dtype=torch.float,
@@ -72,36 +75,49 @@ def inference(args):
     # Prompt & stop word
     stop_word = ['\n'] + args.special_tokens_dict['additional_special_tokens']
     stop_word_pattern = '|'.join(stop_word)
-    init_prompt = ''''''
+    init_prompt = '''<|title|>
+달이 떴다고 전화를 주시다니요
+
+<|lyrics|>
+세상에
+강변에 달빛이 곱다고
+전화를 다 주시다니요
+'''
 
     while True:
         user_input = input('prompt: ')
         input_text = init_prompt + user_input
 
+        # Forward and Generation
         inference_time = time.time()
-        outputs = generator(input_text,
-                           max_new_tokens=256,
-                           num_beams=5,
-                           no_repeat_ngram_size=2)
-        args.accelerator.print('Beam Search Inference Time:',
-                               time.time() - inference_time)
-        output_texts = tokenizer.batch_decode(outputs)
+        output_texts = generator(input_text,
+                                 max_new_tokens=args.max_len,
+                                 num_beams=5,
+                                 no_repeat_ngram_size=2,
+                                 remove_invalid_values=True)
+        beam_search_inference_time = time.time() - inference_time
+        print('Beam Search Inference Time:', beam_search_inference_time)
 
         inference_time = time.time()
-        outputs = generator(input_text,
-                           max_new_tokens=256,
-                           do_sample=True,
-                           top_k=50,
-                           top_p=0.95,
-                           no_repeat_ngram_size=3,
-                           num_return_sequences=5)
-        args.accelerator.print('Nucleus Sampling Inference Time:',
-                               time.time() - inference_time)
-        output_texts += tokenizer.batch_decode(outputs)
+        output_texts += generator(input_text,
+                                  max_new_tokens=args.max_len,
+                                  do_sample=True,
+                                  top_k=50,
+                                  top_p=0.95,
+                                  no_repeat_ngram_size=2,
+                                  num_return_sequences=5,
+                                  remove_invalid_values=True)
+        nucleus_sampling_inference_time = time.time() - inference_time
+        print('Nucleus Sampling Inference Time:',
+              nucleus_sampling_inference_time)
+
+        output_texts = [
+            output_text['generated_text'] for output_text in output_texts
+        ]
 
         args.accelerator.print()
         for idx, output_text in enumerate(output_texts):
-            args.accelerator.print('candidate ' + str(idx))
+            args.accelerator.print('Candidate ' + str(idx))
             args.accelerator.print(output_text)
             args.accelerator.print()
 
@@ -127,7 +143,7 @@ def main():
     # Data Parameters
     parser.add_argument('--data_dir', type=str, default='data')
     parser.add_argument('--cache_root_dir', type=str, default='huggingface')
-    parser.add_argument('--max_len', type=int, default=2048)
+    parser.add_argument('--max_len', type=int, default=128)
 
     # Model Parameters
     parser.add_argument('--pretrained_model',
@@ -143,6 +159,8 @@ def main():
                         default='fp16',
                         choices=['no', 'fp16', 'bf16'])
     parser.add_argument('--cpu', action='store_true')
+    parser.add_argument('--local_rank', type=int, default=0)
+    parser.add_argument('--world_size', type=int, default=1)
 
     args = parser.parse_args()
 
