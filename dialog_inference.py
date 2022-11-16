@@ -8,9 +8,11 @@ import time
 
 import deepspeed
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, logging, pipeline
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, logging, pipeline
 
+from model import GPTNeoXPrefixForCausalLM
 from accelerate import Accelerator
+from utils import str2bool
 
 
 def inference(args):
@@ -28,11 +30,27 @@ def inference(args):
             'additional_special_tokens']:
         num_added_toks = tokenizer.add_special_tokens(args.special_tokens_dict)
 
-    # Model
-    model = AutoModelForCausalLM.from_pretrained(
+    args.config = AutoConfig.from_pretrained(
         args.pretrained_model,
         revision=args.revision,
         cache_dir=os.environ['TRANSFORMERS_CACHE'])
+
+    # Model
+    if args.p_tuning:
+        args.config.pre_seq_len = args.pre_seq_len
+        args.config.prefix_projection = args.prefix_projection
+        args.config.prefix_hidden_size = args.prefix_hidden_size
+        args.config.hidden_dropout_prob = args.hidden_dropout_prob
+        model = GPTNeoXPrefixForCausalLM.from_pretrained(
+                args.pretrained_model,
+                revision=args.revision,
+                config=args.config,
+                cache_dir=os.environ['TRANSFORMERS_CACHE'])
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            args.pretrained_model,
+            revision=args.revision,
+            cache_dir=os.environ['TRANSFORMERS_CACHE'])
 
     if args.add_adapter:
         assert args.saved_model
@@ -45,7 +63,7 @@ def inference(args):
             os.path.join('checkpoint', 'BEST_' + args.saved_model))
         model = AutoModelForCausalLM.from_pretrained(
             os.path.join('checkpoint', 'BEST_' + args.saved_model))
-    args.accelerator.print('[!] Saved checkpoint is loaded')
+        args.accelerator.print('[!] Saved checkpoint is loaded')
 
     # Prepare pipeline
     generator = pipeline('text-generation', tokenizer=tokenizer, model=model, device=args.local_rank)
@@ -125,7 +143,14 @@ def main():
                         default='EleutherAI/polyglot-ko-3.8b')
     parser.add_argument('--revision', type=str, default='main')
     parser.add_argument('--add_adapter', action='store_true')
+    parser.add_argument('--p_tuning', action='store_true')
     parser.add_argument('--saved_model', type=str, default=None)
+
+    # Tuning Parameters
+    parser.add_argument('--pre_seq_len', type=int, default=10)
+    parser.add_argument('--prefix_projection', type=str2bool, default=True)
+    parser.add_argument('--prefix_hidden_size', type=int, default=512)
+    parser.add_argument('--hidden_dropout_prob', type=float, default=.1)
 
     # Multi-process Parameters
     parser.add_argument('--mixed_precision',

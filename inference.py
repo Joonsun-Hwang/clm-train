@@ -8,8 +8,9 @@ import time
 
 import deepspeed
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer, logging, pipeline
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, logging, pipeline
 
+from model import GPTNeoXPrefixForCausalLM
 from accelerate import Accelerator
 
 
@@ -28,15 +29,27 @@ def inference(args):
             'additional_special_tokens']:
         num_added_toks = tokenizer.add_special_tokens(args.special_tokens_dict)
 
-    # Model
-    model = AutoModelForCausalLM.from_pretrained(
+    args.config = AutoConfig.from_pretrained(
         args.pretrained_model,
         revision=args.revision,
         cache_dir=os.environ['TRANSFORMERS_CACHE'])
 
-    if args.special_tokens_dict and args.special_tokens_dict[
-            'additional_special_tokens']:
-        model.resize_token_embeddings(len(tokenizer))
+    # Model
+    if args.p_tuning:
+        args.config.pre_seq_len = 10
+        args.config.prefix_projection = True
+        args.config.prefix_hidden_size = 512
+        args.config.hidden_dropout_prob = .1
+        model = GPTNeoXPrefixForCausalLM.from_pretrained(
+                args.pretrained_model,
+                revision=args.revision,
+                config=args.config,
+                cache_dir=os.environ['TRANSFORMERS_CACHE'])
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            args.pretrained_model,
+            revision=args.revision,
+            cache_dir=os.environ['TRANSFORMERS_CACHE'])
 
     if args.add_adapter:
         assert args.saved_model
@@ -52,10 +65,7 @@ def inference(args):
     args.accelerator.print('[!] Saved checkpoint is loaded')
 
     # Prepare pipeline
-    generator = pipeline('text-generation',
-                         tokenizer=tokenizer,
-                         model=model,
-                         device=args.local_rank)
+    generator = pipeline('text-generation', tokenizer=tokenizer, model=model)
     # generator.model = deepspeed.init_inference(generator.model,
     #                                            mp_size=1,
     #                                            dtype=torch.float,
@@ -75,49 +85,36 @@ def inference(args):
     # Prompt & stop word
     stop_word = ['\n'] + args.special_tokens_dict['additional_special_tokens']
     stop_word_pattern = '|'.join(stop_word)
-    init_prompt = '''<|title|>
-달이 떴다고 전화를 주시다니요
-
-<|lyrics|>
-세상에
-강변에 달빛이 곱다고
-전화를 다 주시다니요
-'''
+    init_prompt = ''''''
 
     while True:
         user_input = input('prompt: ')
         input_text = init_prompt + user_input
 
-        # Forward and Generation
         inference_time = time.time()
-        output_texts = generator(input_text,
-                                 max_new_tokens=args.max_len,
-                                 num_beams=5,
-                                 no_repeat_ngram_size=2,
-                                 remove_invalid_values=True)
-        beam_search_inference_time = time.time() - inference_time
-        print('Beam Search Inference Time:', beam_search_inference_time)
+        outputs = generator(input_text,
+                           max_new_tokens=256,
+                           num_beams=5,
+                           no_repeat_ngram_size=2)
+        args.accelerator.print('Beam Search Inference Time:',
+                               time.time() - inference_time)
+        output_texts = tokenizer.batch_decode(outputs)
 
         inference_time = time.time()
-        output_texts += generator(input_text,
-                                  max_new_tokens=args.max_len,
-                                  do_sample=True,
-                                  top_k=50,
-                                  top_p=0.95,
-                                  no_repeat_ngram_size=2,
-                                  num_return_sequences=5,
-                                  remove_invalid_values=True)
-        nucleus_sampling_inference_time = time.time() - inference_time
-        print('Nucleus Sampling Inference Time:',
-              nucleus_sampling_inference_time)
-
-        output_texts = [
-            output_text['generated_text'] for output_text in output_texts
-        ]
+        outputs = generator(input_text,
+                           max_new_tokens=256,
+                           do_sample=True,
+                           top_k=50,
+                           top_p=0.95,
+                           no_repeat_ngram_size=3,
+                           num_return_sequences=5)
+        args.accelerator.print('Nucleus Sampling Inference Time:',
+                               time.time() - inference_time)
+        output_texts += tokenizer.batch_decode(outputs)
 
         args.accelerator.print()
         for idx, output_text in enumerate(output_texts):
-            args.accelerator.print('Candidate ' + str(idx))
+            args.accelerator.print('candidate ' + str(idx))
             args.accelerator.print(output_text)
             args.accelerator.print()
 
@@ -143,7 +140,7 @@ def main():
     # Data Parameters
     parser.add_argument('--data_dir', type=str, default='data')
     parser.add_argument('--cache_root_dir', type=str, default='huggingface')
-    parser.add_argument('--max_len', type=int, default=128)
+    parser.add_argument('--max_len', type=int, default=2048)
 
     # Model Parameters
     parser.add_argument('--pretrained_model',
@@ -151,6 +148,7 @@ def main():
                         default='EleutherAI/polyglot-ko-3.8b')
     parser.add_argument('--revision', type=str, default='main')
     parser.add_argument('--add_adapter', action='store_true')
+    parser.add_argument('--p_tuning', action='store_true')
     parser.add_argument('--saved_model', type=str, default=None)
 
     # Multi-process Parameters
@@ -159,8 +157,6 @@ def main():
                         default='fp16',
                         choices=['no', 'fp16', 'bf16'])
     parser.add_argument('--cpu', action='store_true')
-    parser.add_argument('--local_rank', type=int, default=0)
-    parser.add_argument('--world_size', type=int, default=1)
 
     args = parser.parse_args()
 

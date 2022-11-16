@@ -18,7 +18,7 @@ from accelerate import (Accelerator, DistributedType, infer_auto_device_map,
                         init_empty_weights)
 from dataset import CausalDataset
 from model import GPTNeoXPrefixForCausalLM
-from utils import calc_gpu_free_memory, save_checkpoint
+from utils import str2bool, calc_gpu_free_memory, save_checkpoint
 
 
 def train_epoch(args, train_loader, model, optimizer, scheduler):
@@ -167,9 +167,6 @@ def train(args):
         cache_dir=os.environ['TRANSFORMERS_CACHE'])
 
     # Model
-    if args.p_tuning:
-        model = GPTNeoXPrefixForCausalLM
-
     if args.model_parallel:
         with init_empty_weights():
             if args.model_type == 'CausalLM':
@@ -206,35 +203,42 @@ def train(args):
                 device_map=args.device_map,
                 cache_dir=os.environ['TRANSFORMERS_CACHE'])
     else:
-        if args.model_type == 'CausalLM':
+        if args.p_tuning:
+            args.config.pre_seq_len = args.pre_seq_len
+            args.config.prefix_projection = args.prefix_projection
+            args.config.prefix_hidden_size = args.prefix_hidden_size
+            args.config.hidden_dropout_prob = args.hidden_dropout_prob
+            model = GPTNeoXPrefixForCausalLM.from_pretrained(
+                args.pretrained_model,
+                revision=args.revision,
+                config=args.config,
+                cache_dir=os.environ['TRANSFORMERS_CACHE'])
+        elif args.model_type == 'CausalLM':
             model = AutoModelForCausalLM.from_pretrained(
                 args.pretrained_model,
                 revision=args.revision,
                 cache_dir=os.environ['TRANSFORMERS_CACHE'])
         elif args.model_type == 'ConditionalGeneration':
             model = AutoModelForPreTraining.from_pretrained(
-                args.pretrained_model,
-                revision=args.revision,
-                cache_dir=os.environ['TRANSFORMERS_CACHE'])
+                    args.pretrained_model,
+                    revision=args.revision,
+                    cache_dir=os.environ['TRANSFORMERS_CACHE'])
 
     if args.special_tokens_dict and args.special_tokens_dict[
             'additional_special_tokens']:
         model.resize_token_embeddings(len(tokenizer))
 
     if args.add_adapter:
-        if args.saved_model:
-            args.adapter_name = model.load_adapter(
-                os.path.join('checkpoint', 'BEST_adapter_' + args.saved_model))
-        else:
-            args.adapter_name = args.checkpoint
-            model.add_adapter(args.adapter_name)
-        model.train_adapter(args.adapter_name)
+        assert args.saved_model
+        args.adapter_name = model.load_adapter(
+            os.path.join('checkpoint', 'BEST_adapter_' + args.saved_model))
+        model.set_active_adapters(args.adapter_name)
         args.accelerator.print('[!] Saved checkpoint is loaded')
     elif args.saved_model:
-        model.load_state_dict(
-            torch.load(
-                os.path.join('checkpoint',
-                             'BEST_' + args.saved_model + '.ckpt')))
+        tokenizer = AutoTokenizer.from_pretrained(
+            os.path.join('checkpoint', 'BEST_' + args.saved_model))
+        model = AutoModelForCausalLM.from_pretrained(
+            os.path.join('checkpoint', 'BEST_' + args.saved_model))
         args.accelerator.print('[!] Saved checkpoint is loaded')
 
     if args.accelerator.distributed_type == DistributedType.TPU:
@@ -372,11 +376,17 @@ def main():
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--max_batch_size_per_gpu', type=int, default=1)
     parser.add_argument('--loss_type', type=str, default='BCE')
-    parser.add_argument('--learning_rate', type=float, default=1e-6)
+    parser.add_argument('--learning_rate', type=float, default=1e-8)
     parser.add_argument('--weight_decay', type=float, default=1e-2)
     parser.add_argument('--scheduler_type', type=str, default='linear')
     parser.add_argument('--grad_clip', type=float, default=10.)
     parser.add_argument('--patient', type=int, default=3)
+
+    # Tuning Parameters
+    parser.add_argument('--pre_seq_len', type=int, default=10)
+    parser.add_argument('--prefix_projection', type=str2bool, default=True)
+    parser.add_argument('--prefix_hidden_size', type=int, default=512)
+    parser.add_argument('--hidden_dropout_prob', type=float, default=.1)
 
     # Process Parameters
     parser.add_argument('--model_parallel', action='store_true')

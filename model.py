@@ -58,6 +58,7 @@ class GPTNeoXPrefixForCausalLM(GPTNeoXPreTrainedModel):
         self.n_head = config.num_attention_heads
         self.n_embd = config.hidden_size // config.num_attention_heads
 
+        self.dropout = torch.nn.Dropout(config.hidden_dropout_prob)
         self.prefix_tokens = torch.arange(self.pre_seq_len).long()
         self.prefix_encoder = PrefixEncoder(config)
 
@@ -77,9 +78,8 @@ class GPTNeoXPrefixForCausalLM(GPTNeoXPreTrainedModel):
         self,
         input_ids=None,
         attention_mask=None,
-        position_ids=None,
-        head_mask=None,
         inputs_embeds=None,
+        head_mask=None,
         labels=None,
         output_attentions=None,
         output_hidden_states=None,
@@ -97,9 +97,8 @@ class GPTNeoXPrefixForCausalLM(GPTNeoXPreTrainedModel):
         outputs = self.gpt_neox(
             input_ids,
             attention_mask=attention_mask,
-            position_ids=position_ids,
-            head_mask=head_mask,
             inputs_embeds=inputs_embeds,
+            head_mask=head_mask,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             return_dict=return_dict,

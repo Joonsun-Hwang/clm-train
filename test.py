@@ -8,10 +8,12 @@ import sys
 import evaluate
 import torch
 from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer, logging
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, logging
 
 from accelerate import Accelerator
 from dataset import CausalDataset
+from model import GPTNeoXPrefixForCausalLM
+from utils import str2bool
 
 
 def test_epoch(args, test_loader, model, tokenizer, metrics):
@@ -99,12 +101,21 @@ def test(args):
     test_loader = causal_dataset.get_dataloaders('test')
 
     # Model
-    model = AutoModelForCausalLM.from_pretrained(
-        args.pretrained_model,
-        revision=args.revision,
-        # torch_dtype='auto',  # There is a bug for 'facebook/opt'
-        low_cpu_mem_usage=True,
-        cache_dir=os.environ['TRANSFORMERS_CACHE'])
+    if args.p_tuning:
+        args.config.pre_seq_len = args.pre_seq_len
+        args.config.prefix_projection = args.prefix_projection
+        args.config.prefix_hidden_size = args.prefix_hidden_size
+        args.config.hidden_dropout_prob = args.hidden_dropout_prob
+        model = GPTNeoXPrefixForCausalLM.from_pretrained(
+            args.pretrained_model,
+            revision=args.revision,
+            config=args.config,
+            cache_dir=os.environ['TRANSFORMERS_CACHE'])
+    elif args.model_type == 'CausalLM':
+        model = AutoModelForCausalLM.from_pretrained(
+            args.pretrained_model,
+            revision=args.revision,
+            cache_dir=os.environ['TRANSFORMERS_CACHE'])
 
     if args.special_tokens_dict and args.special_tokens_dict[
             'additional_special_tokens']:
@@ -113,16 +124,15 @@ def test(args):
     if args.add_adapter:
         assert args.saved_model
         args.adapter_name = model.load_adapter(
-            os.path.join('instance', 'checkpoint',
-                         'BEST_adapter_' + args.saved_model))
+            os.path.join('checkpoint', 'BEST_adapter_' + args.saved_model))
         model.set_active_adapters(args.adapter_name)
         args.accelerator.print('[!] Saved checkpoint is loaded')
     elif args.saved_model:
-        model.load_state_dict(
-            torch.load(
-                os.path.join('instance', 'checkpoint',
-                             'BEST_' + args.saved_model + '.ckpt')))
-    args.accelerator.print('[!] Saved checkpoint is loaded')
+        tokenizer = AutoTokenizer.from_pretrained(
+            os.path.join('checkpoint', 'BEST_' + args.saved_model))
+        model = AutoModelForCausalLM.from_pretrained(
+            os.path.join('checkpoint', 'BEST_' + args.saved_model))
+        args.accelerator.print('[!] Saved checkpoint is loaded')
 
     # Metrics
     with args.accelerator.main_process_first():
@@ -167,6 +177,12 @@ def main():
 
     # Testing Parameters
     parser.add_argument('--batch_size', type=int, default=1)
+
+    # Tuning Parameters
+    parser.add_argument('--pre_seq_len', type=int, default=10)
+    parser.add_argument('--prefix_projection', type=str2bool, default=True)
+    parser.add_argument('--prefix_hidden_size', type=int, default=512)
+    parser.add_argument('--hidden_dropout_prob', type=float, default=.1)
 
     # Multi-process Parameters
     parser.add_argument('--mixed_precision',
