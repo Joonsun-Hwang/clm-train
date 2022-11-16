@@ -8,10 +8,11 @@ import time
 
 import deepspeed
 import torch
-from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, logging, pipeline
+from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
+                          logging, pipeline)
 
-from model import GPTNeoXPrefixForCausalLM
 from accelerate import Accelerator
+from model import GPTNeoXPrefixForCausalLM
 
 
 def inference(args):
@@ -41,10 +42,10 @@ def inference(args):
         args.config.prefix_hidden_size = 512
         args.config.hidden_dropout_prob = .1
         model = GPTNeoXPrefixForCausalLM.from_pretrained(
-                args.pretrained_model,
-                revision=args.revision,
-                config=args.config,
-                cache_dir=os.environ['TRANSFORMERS_CACHE'])
+            args.pretrained_model,
+            revision=args.revision,
+            config=args.config,
+            cache_dir=os.environ['TRANSFORMERS_CACHE'])
     else:
         model = AutoModelForCausalLM.from_pretrained(
             args.pretrained_model,
@@ -93,21 +94,21 @@ def inference(args):
 
         inference_time = time.time()
         outputs = generator(input_text,
-                           max_new_tokens=256,
-                           num_beams=5,
-                           no_repeat_ngram_size=2)
+                            max_new_tokens=256,
+                            num_beams=5,
+                            no_repeat_ngram_size=2)
         args.accelerator.print('Beam Search Inference Time:',
                                time.time() - inference_time)
         output_texts = tokenizer.batch_decode(outputs)
 
         inference_time = time.time()
         outputs = generator(input_text,
-                           max_new_tokens=256,
-                           do_sample=True,
-                           top_k=50,
-                           top_p=0.95,
-                           no_repeat_ngram_size=3,
-                           num_return_sequences=5)
+                            max_new_tokens=256,
+                            do_sample=True,
+                            top_k=50,
+                            top_p=0.95,
+                            no_repeat_ngram_size=3,
+                            num_return_sequences=5)
         args.accelerator.print('Nucleus Sampling Inference Time:',
                                time.time() - inference_time)
         output_texts += tokenizer.batch_decode(outputs)

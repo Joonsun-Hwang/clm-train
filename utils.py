@@ -9,6 +9,7 @@ import torch
 
 import accelerate
 
+
 def str2bool(v):
     if isinstance(v, bool):
         return v
@@ -18,6 +19,7 @@ def str2bool(v):
         return False
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
+
 
 def mkdir(dir_name: str):
     if not os.path.isdir(dir_name):

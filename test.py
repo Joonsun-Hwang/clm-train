@@ -8,7 +8,8 @@ import sys
 import evaluate
 import torch
 from tqdm import tqdm
-from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, logging
+from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
+                          logging)
 
 from accelerate import Accelerator
 from dataset import CausalDataset

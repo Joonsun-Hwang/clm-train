@@ -18,7 +18,7 @@ from accelerate import (Accelerator, DistributedType, infer_auto_device_map,
                         init_empty_weights)
 from dataset import CausalDataset
 from model import GPTNeoXPrefixForCausalLM
-from utils import str2bool, calc_gpu_free_memory, save_checkpoint
+from utils import calc_gpu_free_memory, save_checkpoint, str2bool
 
 
 def train_epoch(args, train_loader, model, optimizer, scheduler):
@@ -220,9 +220,9 @@ def train(args):
                 cache_dir=os.environ['TRANSFORMERS_CACHE'])
         elif args.model_type == 'ConditionalGeneration':
             model = AutoModelForPreTraining.from_pretrained(
-                    args.pretrained_model,
-                    revision=args.revision,
-                    cache_dir=os.environ['TRANSFORMERS_CACHE'])
+                args.pretrained_model,
+                revision=args.revision,
+                cache_dir=os.environ['TRANSFORMERS_CACHE'])
 
     if args.special_tokens_dict and args.special_tokens_dict[
             'additional_special_tokens']:

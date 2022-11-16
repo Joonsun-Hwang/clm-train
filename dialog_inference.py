@@ -8,10 +8,11 @@ import time
 
 import deepspeed
 import torch
-from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer, logging, pipeline
+from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
+                          logging, pipeline)
 
-from model import GPTNeoXPrefixForCausalLM
 from accelerate import Accelerator
+from model import GPTNeoXPrefixForCausalLM
 from utils import str2bool
 
 
@@ -42,10 +43,10 @@ def inference(args):
         args.config.prefix_hidden_size = args.prefix_hidden_size
         args.config.hidden_dropout_prob = args.hidden_dropout_prob
         model = GPTNeoXPrefixForCausalLM.from_pretrained(
-                args.pretrained_model,
-                revision=args.revision,
-                config=args.config,
-                cache_dir=os.environ['TRANSFORMERS_CACHE'])
+            args.pretrained_model,
+            revision=args.revision,
+            config=args.config,
+            cache_dir=os.environ['TRANSFORMERS_CACHE'])
     else:
         model = AutoModelForCausalLM.from_pretrained(
             args.pretrained_model,
@@ -66,7 +67,10 @@ def inference(args):
         args.accelerator.print('[!] Saved checkpoint is loaded')
 
     # Prepare pipeline
-    generator = pipeline('text-generation', tokenizer=tokenizer, model=model, device=args.local_rank)
+    generator = pipeline('text-generation',
+                         tokenizer=tokenizer,
+                         model=model,
+                         device=args.local_rank)
     # generator.model = deepspeed.init_inference(generator.model,
     #                                            mp_size=1,
     #                                            dtype=torch.float,
@@ -84,7 +88,8 @@ def inference(args):
     args.accelerator.print('\n\n[-] Start inference the model\n')
 
     # Prompt & stop word
-    stop_words = ['\n', '.', '!', '?'] + args.special_tokens_dict['additional_special_tokens']
+    stop_words = ['\n', '.', '!', '?'
+                  ] + args.special_tokens_dict['additional_special_tokens']
     stop_word_pattern = '|'.join(stop_words)
     init_prompt = '''<|Information|>
 나의 이름은 황준선이다.
@@ -104,10 +109,10 @@ def inference(args):
 
         inference_time = time.time()
         output_texts = generator(input_text,
-                           max_new_tokens=32,
-                           num_beams=5,
-                           no_repeat_ngram_size=2,
-                           remove_invalid_values=True)
+                                 max_new_tokens=32,
+                                 num_beams=5,
+                                 no_repeat_ngram_size=2,
+                                 remove_invalid_values=True)
 
         output_texts = [
             output_text['generated_text'] for output_text in output_texts
@@ -115,8 +120,9 @@ def inference(args):
 
         # Post-process outputs
         for idx in range(len(output_texts)):
-            output_texts[idx] = output_texts[idx].split(user_utterance)[-1].strip().split(
-                '\n')[0].replace('<|AI|>', '').replace(':', '').strip()
+            output_texts[idx] = output_texts[idx].split(
+                user_utterance)[-1].strip().split('\n')[0].replace(
+                    '<|AI|>', '').replace(':', '').strip()
             output_text_tmp = output_texts[idx]
             for stop_word in stop_words:
                 output_text_tmp = output_text_tmp.split(stop_word)[-1]
@@ -125,7 +131,8 @@ def inference(args):
         args.accelerator.print('<|AI|>:', output_texts[0])
         args.accelerator.print('Inference Time:', time.time() - inference_time)
 
-        init_prompt += '<|User|>: ' + input_text + '\n<|AI|>: ' + output_texts[0] + '\n'
+        init_prompt += '<|User|>: ' + input_text + '\n<|AI|>: ' + output_texts[
+            0] + '\n'
 
 
 def main():

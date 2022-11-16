@@ -1,7 +1,6 @@
 import torch
 from torch import nn
 from torch.nn import CrossEntropyLoss
-
 from transformers import GPTNeoXModel, GPTNeoXPreTrainedModel
 from transformers.modeling_outputs import CausalLMOutputWithPast
 
