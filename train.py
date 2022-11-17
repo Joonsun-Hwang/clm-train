@@ -376,15 +376,15 @@ def main():
     parser.add_argument('--batch_size', type=int, default=64)
     parser.add_argument('--max_batch_size_per_gpu', type=int, default=1)
     parser.add_argument('--loss_type', type=str, default='BCE')
-    parser.add_argument('--learning_rate', type=float, default=1e-8)
+    parser.add_argument('--learning_rate', type=float, default=1e-4)
     parser.add_argument('--weight_decay', type=float, default=1e-2)
     parser.add_argument('--scheduler_type', type=str, default='linear')
     parser.add_argument('--grad_clip', type=float, default=10.)
     parser.add_argument('--patient', type=int, default=3)
 
     # Tuning Parameters
-    parser.add_argument('--pre_seq_len', type=int, default=10)
-    parser.add_argument('--prefix_projection', type=str2bool, default=True)
+    parser.add_argument('--pre_seq_len', type=int, default=100)
+    parser.add_argument('--prefix_projection', type=str2bool, default=False)
     parser.add_argument('--prefix_hidden_size', type=int, default=512)
     parser.add_argument('--hidden_dropout_prob', type=float, default=.1)
 
