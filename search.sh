@@ -23,22 +23,22 @@ for mt in ${method_list} ; do
             checkpoint_tmp="${model_name}--mt${mt}--dist${dist}--bs${bs}--wm${wm}--lr${lr}--wd${wd}"
             if [ ${mt} = "finetuning" ] ; then
               checkpoint="${checkpoint_tmp}"
-              accelerate launch --config_file "accelerate/${dist}_config.yaml" train.py
-                ${checkpoint}
-                --pretrained_model ${pretrained_model}
-                --batch_size ${bs}
-                --num_warmup_steps ${wm}
-                --learning_rate ${lr}
+              accelerate launch --config_file "accelerate/${dist}_config.yaml" train.py \
+                ${checkpoint} \
+                --pretrained_model ${pretrained_model} \
+                --batch_size ${bs} \
+                --num_warmup_steps ${wm} \
+                --learning_rate ${lr} \
                 --weight_decay ${wd}
             elif [ ${mt} = "lora" ] && [ ${dist} = "default" ] ; then
               checkpoint="${checkpoint_tmp}"
-              accelerate launch --config_file "accelerate/${dist}_config.yaml" train.py
-                ${checkpoint}
-                --pretrained_model ${pretrained_model}
-                --batch_size ${bs}
-                --num_warmup_steps ${wm}
-                --learning_rate ${lr}
-                --weight_decay ${wd}
+              accelerate launch --config_file "accelerate/${dist}_config.yaml" train.py \
+                ${checkpoint} \
+                --pretrained_model ${pretrained_model} \
+                --batch_size ${bs} \
+                --num_warmup_steps ${wm} \
+                --learning_rate ${lr} \
+                --weight_decay ${wd} \
                 --add_adapter
             elif [ ${mt} = "ptuning" ] && [ ${dist} = "default" ] ; then
               for psl in ${psl_list} ; do
@@ -46,28 +46,28 @@ for mt in ${method_list} ; do
                   if [ ${pp} = "True" ] ; then
                     for phs in ${phs_list} ; do
                       checkpoint="${checkpoint_tmp}--psl${psl}--pp${pp}--phs${phs}"
-                      accelerate launch --config_file "accelerate/${dist}_config.yaml" train.py
-                        ${checkpoint}
-                        --pretrained_model ${pretrained_model}
-                        --batch_size ${bs}
-                        --num_warmup_steps ${wm}
-                        --learning_rate ${lr}
-                        --weight_decay ${wd}
-                        --pre_seq_len ${psl}
-                        --prefix_projection ${pp}
-                        --prefix_hidden_size ${phs}
+                      accelerate launch --config_file "accelerate/${dist}_config.yaml" train.py \
+                        ${checkpoint} \
+                        --pretrained_model ${pretrained_model} \
+                        --batch_size ${bs} \
+                        --num_warmup_steps ${wm} \
+                        --learning_rate ${lr} \
+                        --weight_decay ${wd} \
+                        --pre_seq_len ${psl} \
+                        --prefix_projection ${pp} \
+                        --prefix_hidden_size ${phs} \
                         --p_tuning
                     done
                   else
                     checkpoint="${checkpoint_tmp}--psl${psl}--pp${pp}"
-                    accelerate launch --config_file "accelerate/${dist}_config.yaml" train.py
-                      ${checkpoint}
-                      --pretrained_model ${pretrained_model}
-                      --batch_size ${bs}
-                      --num_warmup_steps ${wm}
-                      --learning_rate ${lr}
-                      --pre_seq_len ${psl}
-                      --prefix_projection ${pp}
+                    accelerate launch --config_file "accelerate/${dist}_config.yaml" train.py \
+                      ${checkpoint} \
+                      --pretrained_model ${pretrained_model} \
+                      --batch_size ${bs} \
+                      --num_warmup_steps ${wm} \
+                      --learning_rate ${lr} \
+                      --pre_seq_len ${psl} \
+                      --prefix_projection ${pp} \
                       --p_tuning
                   fi
                 done
