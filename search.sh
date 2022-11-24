@@ -20,10 +20,10 @@ for mt in ${method_list} ; do
       for lr in ${lr_list} ; do
         for wd in ${wd_list} ; do
           for dist in ${dist_list} ; do
-            checkpoint_tmp="${model_name}--mt${mt}--dist${dist}--bs${bs}--wm${wm}--lr${lr}--wd${wd}"
+            checkpoint_tmp="${checkpoint_name}--mt${mt}--dist${dist}--bs${bs}--wm${wm}--lr${lr}--wd${wd}"
             if [ ${mt} = "finetuning" ] ; then
               checkpoint="${checkpoint_tmp}"
-              accelerate launch --config_file "accelerate/${dist}_config.yaml" train.py \
+              accelerate launch --config_file accelerate/${dist}_config.yaml train.py \
                 ${checkpoint} \
                 --pretrained_model ${pretrained_model} \
                 --batch_size ${bs} \
@@ -32,7 +32,7 @@ for mt in ${method_list} ; do
                 --weight_decay ${wd}
             elif [ ${mt} = "lora" ] && [ ${dist} = "default" ] ; then
               checkpoint="${checkpoint_tmp}"
-              accelerate launch --config_file "accelerate/${dist}_config.yaml" train.py \
+              accelerate launch --config_file accelerate/${dist}_config.yaml train.py \
                 ${checkpoint} \
                 --pretrained_model ${pretrained_model} \
                 --batch_size ${bs} \
@@ -46,7 +46,7 @@ for mt in ${method_list} ; do
                   if [ ${pp} = "True" ] ; then
                     for phs in ${phs_list} ; do
                       checkpoint="${checkpoint_tmp}--psl${psl}--pp${pp}--phs${phs}"
-                      accelerate launch --config_file "accelerate/${dist}_config.yaml" train.py \
+                      accelerate launch --config_file accelerate/${dist}_config.yaml train.py \
                         ${checkpoint} \
                         --pretrained_model ${pretrained_model} \
                         --batch_size ${bs} \
@@ -60,7 +60,7 @@ for mt in ${method_list} ; do
                     done
                   else
                     checkpoint="${checkpoint_tmp}--psl${psl}--pp${pp}"
-                    accelerate launch --config_file "accelerate/${dist}_config.yaml" train.py \
+                    accelerate launch --config_file accelerate/${dist}_config.yaml train.py \
                       ${checkpoint} \
                       --pretrained_model ${pretrained_model} \
                       --batch_size ${bs} \
