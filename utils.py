@@ -1,4 +1,5 @@
 import argparse
+import json
 import os
 import shutil
 from glob import glob
@@ -6,8 +7,10 @@ from glob import glob
 import numpy as np
 import nvidia_smi
 import torch
+from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 import accelerate
+from accelerate import DistributedType
 
 
 def str2bool(v):
@@ -53,40 +56,104 @@ def calc_gpu_free_memory(gpu_indices, extra_memory) -> dict:
     return free_memory
 
 
-def save_checkpoint(args: argparse.Namespace,
-                    tokenizer,
-                    model,
-                    criteria='loss'):
+def load_checkpoint(args, model, name, epoch):
+    ckpt_dir = os.path.join('checkpoint')
+    if not os.path.isdir(os.path.join(ckpt_dir, name)):
+        raise ValueError(
+            '[!] You should input appropriate checkpoint name at argument "name"'
+        )
+
+    with open(os.path.join('checkpoint', name, str(args.current_epoch),
+                           'config_args.json'),
+              'r',
+              encoding='utf-8-sig') as i:
+        args.__dict__.update(json.load(i))
+    tokenizer = AutoTokenizer.from_pretrained(
+        os.path.join('checkpoint', name, str(args.current_epoch)))
+
+    if args.accelerator.distributed_type == DistributedType.DEEPSPEED:
+        _ = model.load_checkpoint(os.path.join(ckpt_dir, name), epoch)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            os.path.join(ckpt_dir, name, str(args.current_epoch)))
+    return args, model, tokenizer
+
+
+def save_checkpoint(args, model, tokenizer, name):
     ckpt_dir = os.path.join('checkpoint')
     mkdir(ckpt_dir)
 
-    unwrapped_model = args.accelerator.unwrap_model(model)
-    args.waiting += 1
-
-    if args.add_adapter:
-        if args.accelerator.is_main_process:
-            unwrapped_model.save_adapter(
-                os.path.join(ckpt_dir, 'adapter_' + args.checkpoint),
-                args.adapter_name)
-    else:
-        args.accelerator.save(
-            unwrapped_model.state_dict(),
-            os.path.join(ckpt_dir, args.checkpoint + '.ckpt'))
-
-    if len(args.val_losses) == 1:
-        save_best_checkpoint = True
-    elif criteria == 'loss' and args.val_losses[-1] < min(
-            args.val_losses[:-1]):
-        save_best_checkpoint = True
-    elif criteria == 'score' and args.val_scores[-1] > max(
-            args.val_scores[:-1]):
-        save_best_checkpoint = True
-    else:
-        save_best_checkpoint = False
-
-    if save_best_checkpoint:
+    if args.accelerator.is_main_process:
         tokenizer.save_pretrained(
-            os.path.join(ckpt_dir, 'BEST_' + args.checkpoint))
+            os.path.join(ckpt_dir, name, str(args.current_epoch)))
+        with open(os.path.join(ckpt_dir, name, str(args.current_epoch),
+                               'config_args.json'),
+                  'w',
+                  encoding='utf-8-sig') as o:
+            json.dump(
+                {
+                    k: args.__dict__[k]
+                    for k in args.__dict__
+                    if k != 'accelerator' and k != 'device' and k != 'config'
+                },
+                o,
+                ensure_ascii=False)
+
+    if args.accelerator.distributed_type == DistributedType.DEEPSPEED:
+        args.accelerator.save_state(
+            os.path.join(ckpt_dir, name, str(args.current_epoch)))
+        success = model.save_checkpoint(os.path.join(ckpt_dir, name),
+                                        args.current_epoch)
+    else:
+        unwrapped_model = args.accelerator.unwrap_model(model)
         unwrapped_model.save_pretrained(
-            os.path.join(ckpt_dir, 'BEST_' + args.checkpoint))
-        print('\t[!] The best checkpoint is updated.')
+            os.path.join(ckpt_dir, name, str(args.current_epoch)),
+            is_main_process=args.accelerator.is_main_process,
+            save_function=args.accelerator.save,
+            state_dict=args.accelerator.get_state_dict(model),
+        )
+
+
+def load_best_checkpoint(args, name):
+    ckpt_dir = os.path.join('checkpoint')
+    if not os.path.isdir(os.path.join(ckpt_dir, name)):
+        raise ValueError(
+            '[!] You should input appropriate checkpoint name at argument "name"'
+        )
+
+    with open(os.path.join(ckpt_dir, 'BEST_' + name, 'config_args.json'),
+              'r',
+              encoding='utf-8-sig') as i:
+        args.__dict__.update(json.load(i))
+    tokenizer = AutoTokenizer.from_pretrained(
+        os.path.join(ckpt_dir, 'BEST_' + name))
+    model = AutoModelForCausalLM.from_pretrained(
+        os.path.join(ckpt_dir, 'BEST_' + name))
+    return args, model, tokenizer
+
+
+def save_best_checkpoint(args, model, tokenizer, name):
+    ckpt_dir = os.path.join('checkpoint')
+    mkdir(ckpt_dir)
+
+    if args.accelerator.is_main_process:
+        tokenizer.save_pretrained(os.path.join(ckpt_dir, 'BEST_' + name))
+        with open(os.path.join(ckpt_dir, 'BEST_' + name, 'config_args.json'),
+                  'w',
+                  encoding='utf-8-sig') as o:
+            json.dump(
+                {
+                    k: args.__dict__[k]
+                    for k in args.__dict__
+                    if k != 'accelerator' and k != 'device' and k != 'config'
+                },
+                o,
+                ensure_ascii=False)
+
+    unwrapped_model = args.accelerator.unwrap_model(model)
+    unwrapped_model.save_pretrained(
+        os.path.join(ckpt_dir, 'BEST_' + name),
+        is_main_process=args.accelerator.is_main_process,
+        save_function=args.accelerator.save,
+        state_dict=args.accelerator.get_state_dict(model),
+    )

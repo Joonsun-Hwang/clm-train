@@ -21,8 +21,7 @@ WD := /root/clm-train
 CUDA_VERSION := $(shell nvcc --version | grep "release" | cut -d ',' -f 2 | cut -c 10-11)
 
 docker-build:
-	cp ./docker/Dockerfile-CUDA${CUDA_VERSION} ./docker/Dockerfile
-	docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ./docker
+	docker build --no-cache -t ${IMAGE_NAME}:${IMAGE_TAG} ./docker
 
 docker-run:
 	docker run -it -d --restart always -v $(shell pwd):${WD} -p ${CONTAINER_PORT}:${CONTAINER_PORT} --name ${CONTAINER_NAME} --ipc=host --runtime=nvidia -e NVIDIA_DRIVER_CAPABILITIES=compute,utility -e NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES} ${IMAGE_NAME}:${IMAGE_TAG} ${SH}

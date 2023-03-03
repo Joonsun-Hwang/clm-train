@@ -29,9 +29,8 @@ class CausalDataset():
                                         'test':
                                         os.path.join(args.data_dir,
                                                      'test.jsonl')
-                                    },
-                                    cache_dir=os.environ['HF_DATASETS_CACHE'])
-        # If you change the function in dataset.map() after you run the previous code once, you should remove cache huggingface/datasets
+                                    })
+        # If you change the function in dataset.map() after you run the previous code once, you should remove cache
         self.tokenized_dataset = self.dataset.map(
             self._tokenize_function, remove_columns=['prompt', 'completion'])
 

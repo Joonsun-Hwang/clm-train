@@ -86,10 +86,8 @@ def test_epoch(args, test_loader, model, tokenizer, metrics):
 
 def test(args):
     # Tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(
-        args.pretrained_model,
-        revision=args.revision,
-        cache_dir=os.environ['TRANSFORMERS_CACHE'])
+    tokenizer = AutoTokenizer.from_pretrained(args.pretrained_model,
+                                              revision=args.revision)
 
     # Additional special tokens
     args.special_tokens_dict = {'additional_special_tokens': []}
@@ -108,15 +106,10 @@ def test(args):
         args.config.prefix_hidden_size = args.prefix_hidden_size
         args.config.hidden_dropout_prob = args.hidden_dropout_prob
         model = GPTNeoXPrefixForCausalLM.from_pretrained(
-            args.pretrained_model,
-            revision=args.revision,
-            config=args.config,
-            cache_dir=os.environ['TRANSFORMERS_CACHE'])
+            args.pretrained_model, revision=args.revision, config=args.config)
     elif args.model_type == 'CausalLM':
-        model = AutoModelForCausalLM.from_pretrained(
-            args.pretrained_model,
-            revision=args.revision,
-            cache_dir=os.environ['TRANSFORMERS_CACHE'])
+        model = AutoModelForCausalLM.from_pretrained(args.pretrained_model,
+                                                     revision=args.revision)
 
     if args.special_tokens_dict and args.special_tokens_dict[
             'additional_special_tokens']:
@@ -165,7 +158,6 @@ def main():
 
     # Data Parameters
     parser.add_argument('--data_dir', type=str, default='data')
-    parser.add_argument('--cache_root_dir', type=str, default='huggingface')
     parser.add_argument('--max_len', type=int, default=2048)
 
     # Model Parameters
@@ -193,19 +185,6 @@ def main():
     parser.add_argument('--cpu', action='store_true')
 
     args = parser.parse_args()
-
-    os.environ['TRANSFORMERS_CACHE'] = os.path.join(args.cache_root_dir,
-                                                    'transformers',
-                                                    args.pretrained_model,
-                                                    args.revision)
-    os.environ['HF_DATASETS_CACHE'] = os.path.join(args.cache_root_dir,
-                                                   'datasets')
-    os.environ['HF_EVALUATE_CACHE'] = os.path.join(args.cache_root_dir,
-                                                   'evaluate')
-    os.environ['HF_METRICS_CACHE'] = os.path.join(args.cache_root_dir,
-                                                  'metrics')
-    os.environ['HF_MODULES_CACHE'] = os.path.join(args.cache_root_dir,
-                                                  'modules')
 
     # Accelerator
     args.accelerator = Accelerator(cpu=args.cpu,

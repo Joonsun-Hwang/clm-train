@@ -18,7 +18,8 @@ from accelerate import (Accelerator, DistributedType, infer_auto_device_map,
                         init_empty_weights)
 from dataset import CausalDataset
 from model import GPTNeoXPrefixForCausalLM
-from utils import calc_gpu_free_memory, save_checkpoint, str2bool
+from utils import (calc_gpu_free_memory, load_best_checkpoint, load_checkpoint,
+                   save_best_checkpoint, save_checkpoint, str2bool)
 
 
 def train_epoch(args, train_loader, model, optimizer, scheduler):
@@ -144,10 +145,9 @@ def train(args):
     args.current_iter = 0
 
     # Tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(
-        args.pretrained_model,
-        revision=args.revision,
-        cache_dir=os.environ['TRANSFORMERS_CACHE'])
+    tokenizer = AutoTokenizer.from_pretrained(args.pretrained_model,
+                                              revision=args.revision)
+    # tokenizer.pad_token = tokenizer.eos_token
 
     # Additional special tokens
     args.special_tokens_dict = {'additional_special_tokens': []}
@@ -161,10 +161,8 @@ def train(args):
     train_loader = causal_dataset.get_dataloaders('train')
     val_loader = causal_dataset.get_dataloaders('validation')
 
-    args.config = AutoConfig.from_pretrained(
-        args.pretrained_model,
-        revision=args.revision,
-        cache_dir=os.environ['TRANSFORMERS_CACHE'])
+    args.config = AutoConfig.from_pretrained(args.pretrained_model,
+                                             revision=args.revision)
 
     # Model
     if args.model_parallel:
@@ -194,14 +192,12 @@ def train(args):
             model = AutoModelForCausalLM.from_pretrained(
                 args.pretrained_model,
                 revision=args.revision,
-                device_map=args.device_map,
-                cache_dir=os.environ['TRANSFORMERS_CACHE'])
+                device_map=args.device_map)
         elif args.model_type == 'ConditionalGeneration':
             model = AutoModelForPreTraining.from_pretrained(
                 args.pretrained_model,
                 revision=args.revision,
-                device_map=args.device_map,
-                cache_dir=os.environ['TRANSFORMERS_CACHE'])
+                device_map=args.device_map)
     else:
         if args.p_tuning:
             args.config.pre_seq_len = args.pre_seq_len
@@ -211,18 +207,13 @@ def train(args):
             model = GPTNeoXPrefixForCausalLM.from_pretrained(
                 args.pretrained_model,
                 revision=args.revision,
-                config=args.config,
-                cache_dir=os.environ['TRANSFORMERS_CACHE'])
+                config=args.config)
         elif args.model_type == 'CausalLM':
             model = AutoModelForCausalLM.from_pretrained(
-                args.pretrained_model,
-                revision=args.revision,
-                cache_dir=os.environ['TRANSFORMERS_CACHE'])
+                args.pretrained_model, revision=args.revision)
         elif args.model_type == 'ConditionalGeneration':
             model = AutoModelForPreTraining.from_pretrained(
-                args.pretrained_model,
-                revision=args.revision,
-                cache_dir=os.environ['TRANSFORMERS_CACHE'])
+                args.pretrained_model, revision=args.revision)
 
     if args.special_tokens_dict and args.special_tokens_dict[
             'additional_special_tokens']:
@@ -233,13 +224,20 @@ def train(args):
         args.adapter_name = model.load_adapter(
             os.path.join('checkpoint', 'BEST_adapter_' + args.saved_model))
         model.set_active_adapters(args.adapter_name)
-        args.accelerator.print('[!] Saved checkpoint is loaded')
+        args.accelerator.print('[*] Saved checkpoint is loaded')
     elif args.saved_model:
-        tokenizer = AutoTokenizer.from_pretrained(
-            os.path.join('checkpoint', 'BEST_' + args.saved_model))
-        model = AutoModelForCausalLM.from_pretrained(
-            os.path.join('checkpoint', 'BEST_' + args.saved_model))
-        args.accelerator.print('[!] Saved checkpoint is loaded')
+        # save and load args (losses and scores, etc)
+        epoch_histories = [
+            path.split('/')[-1]
+            for path in glob(os.path.join('checkpoint', args.saved_model, '*'))
+        ]
+        args.current_epoch = max(
+            list(
+                map(int,
+                    [epoch for epoch in epoch_histories if epoch.isdigit()])))
+        args, model, tokenizer = load_checkpoint(args, model, args.saved_model,
+                                                 args.current_epoch)
+        args.accelerator.print('[*] Saved checkpoint is loaded')
 
     if args.accelerator.distributed_type == DistributedType.TPU:
         model.tie_weights()
@@ -274,10 +272,17 @@ def train(args):
 
     if args.accelerator.state.distributed_type == DistributedType.DEEPSPEED:
         scheduler = accelerate.utils.DummyScheduler(
-            optimizer,
+            optimizer=optimizer,
             total_num_steps=(len(train_loader) * args.max_epoch) //
             args.gradient_accumulation_steps,
             warmup_num_steps=args.num_warmup_steps)
+    elif args.accelerator.state.distributed_type == DistributedType.MEGATRON_LM:
+        scheduler = accelerate.utils.MegatronLMDummyScheduler(
+            optimizer=optimizer,
+            total_num_steps=(len(train_loader) * args.max_epoch) //
+            args.gradient_accumulation_steps,
+            warmup_num_steps=args.num_warmup_steps,
+        )
     else:
         scheduler = get_scheduler(
             name=args.scheduler_type,
@@ -304,8 +309,7 @@ def train(args):
     # Train
     args.accelerator.wait_for_everyone()
     args.accelerator.print('\n\n[-] Start training the model\n')
-    start_epoch = args.current_epoch
-    for epoch in range(start_epoch, args.max_epoch):
+    for epoch in range(args.current_epoch, args.max_epoch):
 
         # Train Steps
         args.accelerator.print('[', epoch, '/', args.max_epoch, ']')
@@ -325,8 +329,9 @@ def train(args):
         # Print results
         args.accelerator.print(' - Train loss:', round(train_loss, 4),
                                '\n - Validation loss:', round(val_loss, 4))
+        args.accelerator.print(' - Scores:')
         for key, score in scores.items():
-            args.accelerator.print(' - ', key, '\n', score)
+            args.accelerator.print('\t', score)
 
         # Append history
         args.train_losses.append(train_loss)
@@ -334,17 +339,39 @@ def train(args):
         args.val_scores.append(scores['meteor']['meteor'])
 
         # Save checkpoint
+        save_time = time.time()
         args.accelerator.wait_for_everyone()
-        if args.accelerator.is_local_main_process:
-            save_checkpoint(args, tokenizer, model)
+        save_checkpoint(args, model, tokenizer, args.checkpoint)
+        args.accelerator.print(' - Checkpoint Save Time:',
+                               round(time.time() - save_time, 4))
 
         # Early Stopping
+        if args.val_losses[-1] < min(args.val_losses):
+            args.waiting = 0
+        else:
+            args.waiting += 1
         args.current_epoch += 1
+
+        args.accelerator.wait_for_everyone()
         if args.waiting > args.patient:
-            args.accelerator.wait_for_everyone()
-            sys.exit()
+            args.accelerator.print('[!] Early stop for training')
+            break
 
         args.accelerator.print('\n\n')
+
+    # Make Best Checkpoint
+    args.accelerator.print('[-] Start load and save the best checkpoint')
+    save_time = time.time()
+
+    args.best_epoch = args.val_losses.index(min(args.val_losses))
+    args, model, tokenizer = load_checkpoint(args, model, args.checkpoint,
+                                             args.best_epoch)
+    save_best_checkpoint(args, model, tokenizer, args.checkpoint)
+
+    args.accelerator.print(' - Best Checkpoint Save Time:',
+                           round(time.time() - save_time, 4))
+    args.accelerator.print(
+        '[*] The best checkpoint was saved and finish training')
 
 
 def main():
@@ -352,7 +379,6 @@ def main():
 
     # Data Parameters
     parser.add_argument('--data_dir', type=str, default='data')
-    parser.add_argument('--cache_root_dir', type=str, default='huggingface')
     parser.add_argument('--max_len', type=int, default=2048)
 
     # Model Parameters
@@ -363,7 +389,8 @@ def main():
     parser.add_argument('--model_type', type=str, default='CausalLM')
     parser.add_argument('--pretrained_model',
                         type=str,
-                        default='EleutherAI/polyglot-ko-3.8b')
+                        default='EleutherAI/polyglot-ko-1.3b')
+    # default='skt/ko-gpt-trinity-1.2B-v0.5')
     parser.add_argument('--revision', type=str, default='main')
     parser.add_argument('--add_adapter', action='store_true')
     parser.add_argument('--p_tuning', action='store_true')
@@ -371,12 +398,12 @@ def main():
     parser.add_argument('checkpoint', type=str)
 
     # Training Parameters
-    parser.add_argument('--max_epoch', type=int, default=100)
+    parser.add_argument('--max_epoch', type=int, default=10)
     parser.add_argument('--num_warmup_steps', type=int, default=0)
-    parser.add_argument('--batch_size', type=int, default=64)
+    parser.add_argument('--batch_size', type=int, default=512)
     parser.add_argument('--max_batch_size_per_gpu', type=int, default=1)
     parser.add_argument('--loss_type', type=str, default='BCE')
-    parser.add_argument('--learning_rate', type=float, default=1e-4)
+    parser.add_argument('--learning_rate', type=float, default=1e-6)
     parser.add_argument('--weight_decay', type=float, default=1e-2)
     parser.add_argument('--scheduler_type', type=str, default='linear')
     parser.add_argument('--grad_clip', type=float, default=10.)
@@ -403,21 +430,11 @@ def main():
     args.val_scores = []
     args.waiting = 0
 
+    os.environ[
+        "TOKENIZERS_PARALLELISM"] = "false"  # Avoid tokenizer parallelism deadlock warning
+
     if 'LOCAL_WORLD_SIZE' not in os.environ:  # the number of processes
         os.environ['LOCAL_WORLD_SIZE'] = '1'
-
-    os.environ['TRANSFORMERS_CACHE'] = os.path.join(args.cache_root_dir,
-                                                    'transformers',
-                                                    args.pretrained_model,
-                                                    args.revision)
-    os.environ['HF_DATASETS_CACHE'] = os.path.join(args.cache_root_dir,
-                                                   'datasets')
-    os.environ['HF_EVALUATE_CACHE'] = os.path.join(args.cache_root_dir,
-                                                   'evaluate')
-    os.environ['HF_METRICS_CACHE'] = os.path.join(args.cache_root_dir,
-                                                  'metrics')
-    os.environ['HF_MODULES_CACHE'] = os.path.join(args.cache_root_dir,
-                                                  'modules')
 
     # Accelerator
     args.accelerator = Accelerator(cpu=args.cpu,
@@ -445,7 +462,8 @@ def main():
         args.gradient_accumulation_steps = args.accelerator.state.deepspeed_plugin.deepspeed_config[
             "gradient_accumulation_steps"]
     if args.batch_size > args.max_batch_size_per_gpu and args.accelerator.distributed_type != DistributedType.TPU:
-        args.gradient_accumulation_steps = args.batch_size // args.max_batch_size_per_gpu
+        args.gradient_accumulation_steps = args.batch_size // (
+            args.max_batch_size_per_gpu * int(os.environ['LOCAL_WORLD_SIZE']))
         args.batch_size = args.max_batch_size_per_gpu
 
     if not args.model_parallel:

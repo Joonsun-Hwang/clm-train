@@ -11,19 +11,17 @@ import torch
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                           logging, pipeline)
 
-from accelerate import Accelerator
+from accelerate import Accelerator, DistributedType
 from model import GPTNeoXPrefixForCausalLM
-from utils import str2bool
+from utils import load_best_checkpoint, str2bool
 
 
 def inference(args):
     pipeline_load_time = time.time()
 
     # Tokenizer
-    tokenizer = AutoTokenizer.from_pretrained(
-        args.pretrained_model,
-        revision=args.revision,
-        cache_dir=os.environ['TRANSFORMERS_CACHE'])
+    tokenizer = AutoTokenizer.from_pretrained(args.pretrained_model,
+                                              revision=args.revision)
 
     # Additional special tokens
     args.special_tokens_dict = {'additional_special_tokens': []}
@@ -31,10 +29,8 @@ def inference(args):
             'additional_special_tokens']:
         num_added_toks = tokenizer.add_special_tokens(args.special_tokens_dict)
 
-    args.config = AutoConfig.from_pretrained(
-        args.pretrained_model,
-        revision=args.revision,
-        cache_dir=os.environ['TRANSFORMERS_CACHE'])
+    args.config = AutoConfig.from_pretrained(args.pretrained_model,
+                                             revision=args.revision)
 
     # Model
     if args.p_tuning:
@@ -43,39 +39,33 @@ def inference(args):
         args.config.prefix_hidden_size = args.prefix_hidden_size
         args.config.hidden_dropout_prob = args.hidden_dropout_prob
         model = GPTNeoXPrefixForCausalLM.from_pretrained(
-            args.pretrained_model,
-            revision=args.revision,
-            config=args.config,
-            cache_dir=os.environ['TRANSFORMERS_CACHE'])
+            args.pretrained_model, revision=args.revision, config=args.config)
     else:
-        model = AutoModelForCausalLM.from_pretrained(
-            args.pretrained_model,
-            revision=args.revision,
-            cache_dir=os.environ['TRANSFORMERS_CACHE'])
+        model = AutoModelForCausalLM.from_pretrained(args.pretrained_model,
+                                                     revision=args.revision)
 
     if args.add_adapter:
         assert args.saved_model
         args.adapter_name = model.load_adapter(
             os.path.join('checkpoint', 'BEST_adapter_' + args.saved_model))
         model.set_active_adapters(args.adapter_name)
-        args.accelerator.print('[!] Saved checkpoint is loaded')
+        print('[!] Saved checkpoint is loaded')
     elif args.saved_model:
-        tokenizer = AutoTokenizer.from_pretrained(
-            os.path.join('checkpoint', 'BEST_' + args.saved_model))
-        model = AutoModelForCausalLM.from_pretrained(
-            os.path.join('checkpoint', 'BEST_' + args.saved_model))
-        args.accelerator.print('[!] Saved checkpoint is loaded')
+        _, model, tokenizer = load_best_checkpoint(args, args.saved_model)
+        print('[*] Saved checkpoint is loaded')
 
     # Prepare pipeline
     generator = pipeline('text-generation',
                          tokenizer=tokenizer,
                          model=model,
                          device=args.local_rank)
-    # generator.model = deepspeed.init_inference(generator.model,
-    #                                            mp_size=1,
-    #                                            dtype=torch.float,
-    #                                            replace_method='auto',
-    #                                            replace_with_kernel_inject=True)
+    if args.accelerator.state.distributed_type == DistributedType.DEEPSPEED:
+        generator.model = deepspeed.init_inference(
+            generator.model,
+            mp_size=args.world_size,
+            dtype=torch.float,
+            replace_method='auto',
+            replace_with_kernel_inject=True)
 
     args.accelerator.print('Pipeline Loading Time:',
                            time.time() - pipeline_load_time)
@@ -98,7 +88,7 @@ def inference(args):
 나는 지금 회사에서 야근하고 있다.
 나는 이번 주말에 로스트아크 게임을 할 것이다.
 
-<|Dialogue|>:
+<|Dialogue|>
 <|User|>: 안녕? 나는 김석겸이라고 해. 뭐하고 있어?
 <|AI|>: 안녕하세요. 저는 황준선이라고 합니다. 회사에서 야근 중이에요.
 '''
@@ -141,7 +131,6 @@ def main():
 
     # Data Parameters
     parser.add_argument('--data_dir', type=str, default='data')
-    parser.add_argument('--cache_root_dir', type=str, default='huggingface')
     parser.add_argument('--max_len', type=int, default=2048)
 
     # Model Parameters
@@ -170,23 +159,13 @@ def main():
 
     args = parser.parse_args()
 
-    os.environ['TRANSFORMERS_CACHE'] = os.path.join(args.cache_root_dir,
-                                                    'transformers',
-                                                    args.pretrained_model,
-                                                    args.revision)
-    os.environ['HF_DATASETS_CACHE'] = os.path.join(args.cache_root_dir,
-                                                   'datasets')
-    os.environ['HF_EVALUATE_CACHE'] = os.path.join(args.cache_root_dir,
-                                                   'evaluate')
-    os.environ['HF_METRICS_CACHE'] = os.path.join(args.cache_root_dir,
-                                                  'metrics')
-    os.environ['HF_MODULES_CACHE'] = os.path.join(args.cache_root_dir,
-                                                  'modules')
-
     # Accelerator
     args.accelerator = Accelerator(cpu=args.cpu,
                                    mixed_precision=args.mixed_precision)
-    args.device = args.accelerator.device
+
+    # Deepspeed distributed setup
+    if args.accelerator.state.distributed_type == DistributedType.DEEPSPEED:
+        deepspeed.init_distributed('nccl')
 
     logging.set_verbosity_error()
 
