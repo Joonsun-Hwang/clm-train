@@ -7,11 +7,11 @@ import sys
 
 import evaluate
 import torch
+from accelerate import Accelerator
 from tqdm import tqdm
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
-                          logging)
+                          logging, set_seed)
 
-from accelerate import Accelerator
 from dataset import CausalDataset
 from model import GPTNeoXPrefixForCausalLM
 from utils import str2bool
@@ -190,6 +190,10 @@ def main():
     args.accelerator = Accelerator(cpu=args.cpu,
                                    mixed_precision=args.mixed_precision)
     args.device = args.accelerator.device
+
+    # Reproduciblity
+    set_seed(args.random_seed)
+
     logging.set_verbosity_error()
 
     test(args)

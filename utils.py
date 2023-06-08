@@ -4,13 +4,9 @@ import os
 import shutil
 from glob import glob
 
-import numpy as np
 import nvidia_smi
-import torch
-from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
-
-import accelerate
 from accelerate import DistributedType
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 def str2bool(v):
@@ -57,7 +53,7 @@ def calc_gpu_free_memory(gpu_indices, extra_memory) -> dict:
 
 
 def load_checkpoint(args, model, name, epoch):
-    ckpt_dir = os.path.join('checkpoint')
+    ckpt_dir = os.path.join(args.checkpoint_dir, 'checkpoint')
     if not os.path.isdir(os.path.join(ckpt_dir, name)):
         raise ValueError(
             '[!] You should input appropriate checkpoint name at argument "name"'
@@ -80,7 +76,7 @@ def load_checkpoint(args, model, name, epoch):
 
 
 def save_checkpoint(args, model, tokenizer, name):
-    ckpt_dir = os.path.join('checkpoint')
+    ckpt_dir = os.path.join(args.checkpoint_dir, 'checkpoint')
     mkdir(ckpt_dir)
 
     if args.accelerator.is_main_process:
@@ -93,8 +89,8 @@ def save_checkpoint(args, model, tokenizer, name):
             json.dump(
                 {
                     k: args.__dict__[k]
-                    for k in args.__dict__
-                    if k != 'accelerator' and k != 'device' and k != 'config'
+                    for k in args.__dict__ if k != 'accelerator'
+                    and k != 'device' and 'config' not in k
                 },
                 o,
                 ensure_ascii=False)
@@ -115,7 +111,7 @@ def save_checkpoint(args, model, tokenizer, name):
 
 
 def load_best_checkpoint(args, name):
-    ckpt_dir = os.path.join('checkpoint')
+    ckpt_dir = os.path.join(args.checkpoint_dir, 'checkpoint')
     if not os.path.isdir(os.path.join(ckpt_dir, name)):
         raise ValueError(
             '[!] You should input appropriate checkpoint name at argument "name"'
@@ -133,7 +129,7 @@ def load_best_checkpoint(args, name):
 
 
 def save_best_checkpoint(args, model, tokenizer, name):
-    ckpt_dir = os.path.join('checkpoint')
+    ckpt_dir = os.path.join(args.checkpoint_dir, 'checkpoint')
     mkdir(ckpt_dir)
 
     if args.accelerator.is_main_process:
@@ -144,8 +140,8 @@ def save_best_checkpoint(args, model, tokenizer, name):
             json.dump(
                 {
                     k: args.__dict__[k]
-                    for k in args.__dict__
-                    if k != 'accelerator' and k != 'device' and k != 'config'
+                    for k in args.__dict__ if k != 'accelerator'
+                    and k != 'device' and 'config' not in k
                 },
                 o,
                 ensure_ascii=False)

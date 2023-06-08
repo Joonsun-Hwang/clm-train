@@ -1,0 +1,41 @@
+# Builds NVIDIA docker image of PyTorch
+
+# Environment Variables
+ARG CUDA_VERSION=11.7.0
+ARG CUDNN_VERSION=8
+ARG WHEEL_VERSION=117
+ARG UBUNTU_VERSION=20.04
+
+# FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-cudnn${CUDNN_VERSION}-runtime-ubuntu${UBUNTU_VERSION}
+# There is an error when using nvidia cuda images
+# CUDA version is 11.7.x
+FROM nvcr.io/nvidia/pytorch:22.08-py3
+
+# Install apt libs
+RUN apt-get update && \
+    apt-get install -y curl git wget && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists*
+
+# Activate our bash shell
+RUN chsh -s /bin/bash
+SHELL ["/bin/bash", "-c"]
+
+# Install and upgrade pip
+RUN python3 -m pip install --upgrade pip
+# Install packages that 
+RUN python3 -m pip install --no-cache-dir \
+    git+https://github.com/huggingface/accelerate#egg=accelerate[testing,test_trackers] \
+    --extra-index-url https://download.pytorch.org/whl/cu${WHEEL_VERSION}
+RUN python3 -m pip install --no-cache-dir \
+    openai langchain peft adapter-transformers bert-score gpustat nltk nvidia-ml-py3
+# Install apex
+RUN git clone https://github.com/NVIDIA/apex; \
+    cd apex; \
+    python3 -m pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./; \
+    cd ..
+RUN python3 -m pip install --no-cache-dir \
+    git+https://github.com/huggingface/Megatron-LM.git
+
+# Activate the virtualenv
+CMD ["/bin/bash"]

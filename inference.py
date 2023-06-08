@@ -8,15 +8,14 @@ import time
 
 import deepspeed
 import torch
-from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
-                          logging, pipeline)
-
 from accelerate import Accelerator, DistributedType
+from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
+                          logging, pipeline, set_seed)
+
 from model import GPTNeoXPrefixForCausalLM
 from utils import load_best_checkpoint, str2bool
 
 # from deepspeed.utils.zero_to_fp32 import load_state_dict_from_zero_checkpoint
-
 
 
 def inference(args):
@@ -174,11 +173,16 @@ def main():
     parser.add_argument('--local_rank', type=int, default=0)
     parser.add_argument('--world_size', type=int, default=1)
 
+    parser.add_argument('--random_seed', type=int, default=1234)
+
     args = parser.parse_args()
 
     # Accelerator
     args.accelerator = Accelerator(cpu=args.cpu,
                                    mixed_precision=args.mixed_precision)
+
+    # Reproduciblity
+    set_seed(args.random_seed)
 
     # Deepspeed distributed setup
     if args.accelerator.state.distributed_type == DistributedType.DEEPSPEED:

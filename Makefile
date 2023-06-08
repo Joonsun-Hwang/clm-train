@@ -15,13 +15,33 @@ endif
 ifndef NVIDIA_VISIBLE_DEVICES
 $(error NVIDIA_VISIBLE_DEVICES is not set. You can set it like 'all' or '1,2,3')
 endif
+ifndef PROJECT_NAME
+$(error PROJECT_NAME is not set.)
+endif
+
+ifndef PYTHON_VERSION
+$(error PYTHON_VERSION is not set.)
+endif
+
+ifndef CUDA_VERSION
+$(error CUDA_VERSION is not set.)
+endif
+ifndef WHEEL_VERSION
+$(error WHEEL_VERSION is not set.)
+endif
+ifndef CUDNN_VERSION
+$(error CUDNN_VERSION is not set.)
+endif
+ifndef UBUNTU_VERSION
+$(error UBUNTU_VERSION is not set.)
+endif
 
 SH := /bin/bash
-WD := /root/clm-train
-CUDA_VERSION := $(shell nvcc --version | grep "release" | cut -d ',' -f 2 | cut -c 10-11)
+WD := /root/${PROJECT_NAME}
+# CUDA_VERSION := $(shell nvcc --version | grep "release" | cut -d ',' -f 2 | cut -c 10-11)
 
 docker-build:
-	docker build --no-cache -t ${IMAGE_NAME}:${IMAGE_TAG} ./docker
+	docker build --progress=plain --no-cache -t ${IMAGE_NAME}:${IMAGE_TAG} $(shell grep -vE '^$$|#' .env | sed 's/^/--build-arg /') ./docker 
 
 docker-run:
 	docker run -it -d --restart always -v $(shell pwd):${WD} -p ${CONTAINER_PORT}:${CONTAINER_PORT} --name ${CONTAINER_NAME} --ipc=host --runtime=nvidia -e NVIDIA_DRIVER_CAPABILITIES=compute,utility -e NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES} ${IMAGE_NAME}:${IMAGE_TAG} ${SH}
@@ -49,11 +69,3 @@ docker-rmi:
 
 gpustat:
 	gpustat -cp -i .1
-
-test:
-	if [ ${CUDA_VERSION} = 10 ]; then \
-		echo ${CUDA_VERSION}; \
-	else if [ ${CUDA_VERSION} = 11 ]; then \
-			echo ${CUDA_VERSION}; \
-		fi \
-	fi

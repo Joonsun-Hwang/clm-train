@@ -1,15 +1,47 @@
-# Builds NVIDIA docker image of PyTorch
+# Builds GPU docker image of PyTorch
+# Uses multi-staged approach to reduce size
 
 # Environment Variables
-ARG CUDA_VERSION=11.7.0
-ARG CUDNN_VERSION=8
-ARG WHEEL_VERSION=117
-ARG UBUNTU_VERSION=20.04
+ARG PYTHON_VERSION
+ARG CUDA_VERSION
+ARG WHEEL_VERSION
+ARG CUDNN_VERSION
+ARG UBUNTU_VERSION
 
-# FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-cudnn${CUDNN_VERSION}-runtime-ubuntu${UBUNTU_VERSION}
-# There is an error when using nvidia cuda images
-# CUDA version is 11.7.x
-FROM nvcr.io/nvidia/pytorch:22.08-py3
+# Stage 1
+# Use base conda image to reduce time
+FROM continuumio/miniconda3:latest AS compile-image
+
+# Specify py version
+# Install apt libs
+RUN apt-get update && \
+    apt-get install -y curl git wget && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists*
+
+# Create our conda env
+RUN conda create --name accelerate python=${PYTHON_VERSION} ipython jupyter pip
+# We don't install pytorch here yet since CUDA isn't available
+# instead we use the direct torch wheel
+ENV PATH /opt/conda/envs/accelerate/bin:$PATH
+# Activate our bash shell
+RUN chsh -s /bin/bash
+SHELL ["/bin/bash", "-c"]
+
+# Activate the conda env and install torch + accelerate
+RUN source activate accelerate && \
+    python3 -m pip install --no-cache-dir \
+    git+https://github.com/huggingface/accelerate#egg=accelerate[testing,test_trackers] \
+    --extra-index-url https://download.pytorch.org/whl/cu${WHEEL_VERSION}
+# Install additional libraries if you want
+RUN python3 -m pip install --no-cache-dir \
+    peft adapter-transformers bert-score gpustat nltk nvidia-ml-py3 wandb
+
+# Stage 2
+FROM nvidia/cuda:${CUDA_VERSION}-cudnn${CUDNN_VERSION}-devel-ubuntu${UBUNTU_VERSION} AS build-image
+# FROM nvcr.io/nvidia/pytorch:23.01-py3
+COPY --from=compile-image /opt/conda /opt/conda
+ENV PATH /opt/conda/bin:$PATH
 
 # Install apt libs
 RUN apt-get update && \
@@ -17,25 +49,6 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists*
 
-# Activate our bash shell
-RUN chsh -s /bin/bash
-SHELL ["/bin/bash", "-c"]
-
-# Install and upgrade pip
-RUN python3 -m pip install --upgrade pip
-# Install packages that 
-RUN python3 -m pip install --no-cache-dir \
-    git+https://github.com/huggingface/accelerate#egg=accelerate[testing,test_trackers] \
-    --extra-index-url https://download.pytorch.org/whl/cu${WHEEL_VERSION}
-RUN python3 -m pip install --no-cache-dir \
-    adapter-transformers bert-score gpustat nltk nvidia-ml-py3
-# Install apex
-RUN git clone https://github.com/NVIDIA/apex; \
-    cd apex; \
-    python3 -m pip install -v --disable-pip-version-check --no-cache-dir --global-option="--cpp_ext" --global-option="--cuda_ext" ./; \
-    cd ..
-RUN python3 -m pip install --no-cache-dir \
-    git+https://github.com/huggingface/Megatron-LM.git
-
 # Activate the virtualenv
+RUN echo "source activate accelerate" >> ~/.bashrc
 CMD ["/bin/bash"]

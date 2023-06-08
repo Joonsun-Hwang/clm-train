@@ -1,4 +1,4 @@
-## Fine-tuning Huggingface's CLMs with accelerate
+## Fine-tuning Huggingface's CLMs with Accelerate & PEFT
 
 
 ### 1. Installation
@@ -67,11 +67,19 @@ accelerate config
 You must have `train.jsonl`, `val.jsonl`, and `test.jsonl` files in the `data` directory, respectively, and this can be set with `--data_dir` among the argument options.  
 It is recommended to use all data after preprocessing it in advance, and not recommended to modify the mini-batch after loading it through the DataLoader class.  
 
-The format of `*.jsonl` files are like this:
+The format of `*.jsonl` files are like this for CausalDataset:
 ```
 {"prompt": "<prompt text>", "completion": "<ideal generated text>"}
 {"prompt": "<prompt text>", "completion": "<ideal generated text>"}
 {"prompt": "<prompt text>", "completion": "<ideal generated text>"}
+...
+```
+
+The format of `*.jsonl` files are like this for InstructDataset:
+```
+{"instruction": "<intruction text>", "input": "<additional information for instruction>", "output": "<ideal response for instruction>"}
+{"instruction": "<intruction text>", "input": "<additional information for instruction>", "output": "<ideal response for instruction>"}
+{"instruction": "<intruction text>", "input": "<additional information for instruction>", "output": "<ideal response for instruction>"}=
 ...
 ```
 
@@ -86,23 +94,14 @@ If you want to add other special tokens, you could do it at `main()` function in
 ##### 3.1.1. Multi-GPU Data Parallel
 ###### accelerate launch
 ```
-accelerate launch --config_file accelerate/default_config.yaml train.py %CHECKPOINT%
+accelerate launch --config_file accelerate_config/default_config.yaml train.py %CHECKPOINT%
 ```
 ###### torch distributed launch
 ```
 torchrun train.py %CHECKPOINT%
 ```
 
-##### 3.1.2. Multi-GPU Model Parallel
-If you want to train the model in parallel, it is recommended not to use accelerate launch.  
-Currently, `accelerate launch` does not provide an argument to control the number of processes, and it is rather slow when parallelizing the model and training with multi-process.  
-Among the arguments in `train.py` file, the `--extra memory` works by acquiring an empty space (space to be loaded with data) of each device, then dividing and allocating the model to the rest.  
-###### torch distributed launch
-```
-torchrun --nproc_per_node 1 train.py %CHECKPOINT% --model_parallel
-```
-
-##### 3.1.3. DeepSpeed
+##### 3.1.2. DeepSpeed
 To use DeepSpeed, you need yaml and json configuration files. That is, you need to configure DeepSpeed via `accelerate config` command like [1.1.2. Docker](#####112-Docker).  
 Please check the following documents:  
 https://huggingface.co/docs/accelerate/v0.12.0/en/usage_guides/deepspeed#deepspeed  
@@ -110,13 +109,13 @@ https://huggingface.co/docs/accelerate/v0.12.0/en/usage_guides/deepspeed#deepspe
 There example files of default, DeepSpeed, and TPU configuration are in `accelerate` directory.  
 ###### accelerate launch
 ```
-accelerate launch --config_file accelerate/deepspeed_config.yaml train.py %CHECKPOINT%
+accelerate launch --config_file accelerate_config/deepspeed_config.yaml train.py %CHECKPOINT%
 ```
 
-##### 3.1.4. TPU
+##### 3.1.3. TPU
 ###### accelerate launch
 ```
-accelerate launch --config_file accelerate/tpu_config.yaml train.py %CHECKPOINT%
+accelerate launch --config_file accelerate_config/tpu_config.yaml train.py %CHECKPOINT%
 ```
 
 #### 3.2. Test
@@ -132,21 +131,14 @@ python inference.py --saved_model %CHECKPOINT%
 ---
 
 
-### 4. Fine-Tuning Methods
-#### 4.1. Pre-Fine-Tuning
+### 4. PEFT
+#### 4.1. LoRA
 ```
-accelerate launch --config_file accelerate/default_config.yaml train.py %PRE_CHECKPOINT%
-accelerate launch --config_file accelerate/default_config.yaml train.py %POST_CHECKPOINT% --saved_model %PRE_CHECKPOINT%
-```
-
-#### 4.2. Adapter
-```
-accelerate launch --config_file accelerate/default_config.yaml train.py %CHECKPOINT% --add_adpater
-python test.py %CHECKPOINT% --add_adapter
+accelerate launch --config_file accelerate_config/default_config.yaml train.py %CHECKPOINT% --use_lora
 ```
 
 ---
 
 
 ### 5. TODO
-- CUDA Device Error when data parallel
+- Integrate other PEFT methods
