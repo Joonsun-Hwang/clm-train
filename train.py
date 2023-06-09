@@ -237,6 +237,7 @@ def train(args):
                                  scheduler)
         args.accelerator.print(' - Train Time:',
                                round(time.time() - train_start_time, 4))
+        args.accelerator.print(' - Train loss:', round(train_loss, 4))
 
         # Validation Steps
         val_start_time = time.time()
@@ -244,13 +245,13 @@ def train(args):
                                      metrics)
         args.accelerator.print(' - Validation Time:',
                                round(time.time() - val_start_time, 4))
+        args.accelerator.print(' - Validation loss:', round(val_loss, 4))
 
         # Print results
-        args.accelerator.print(' - Train loss:', round(train_loss, 4),
-                               '\n - Validation loss:', round(val_loss, 4))
         args.accelerator.print(' - Scores:')
         for key, score in scores.items():
             args.accelerator.print('\t', score)
+        args.accelerator.print()
 
         # Append history
         args.train_losses.append(train_loss)
@@ -265,7 +266,7 @@ def train(args):
                                round(time.time() - save_time, 4))
 
         # Early Stopping
-        if args.val_losses[-1] < min(args.val_losses):
+        if len(args.val_losses) > 1 and args.val_losses[-1] < min(args.val_losses[:-1]):
             args.waiting = 0
         else:
             args.waiting += 1
@@ -283,14 +284,17 @@ def train(args):
     save_time = time.time()
 
     args.best_epoch = args.val_losses.index(min(args.val_losses))
+    args.accelerator.print(args.best_epoch, args.val_losses)
     args, model, tokenizer = load_checkpoint(args, model, args.checkpoint,
                                              args.best_epoch)
+    args.accelerator.print(args.best_epoch, args.val_losses)
     save_best_checkpoint(args, model, tokenizer, args.checkpoint)
 
     args.accelerator.print(' - Best Checkpoint Save Time:',
                            round(time.time() - save_time, 4))
     args.accelerator.print(
         '[*] The best checkpoint was saved and finish training')
+    args.accelerator.print('\n\n')
 
 
 def main():

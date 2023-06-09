@@ -59,19 +59,19 @@ def load_checkpoint(args, model, name, epoch):
             '[!] You should input appropriate checkpoint name at argument "name"'
         )
 
-    with open(os.path.join('checkpoint', name, str(args.current_epoch),
+    with open(os.path.join('checkpoint', name, str(epoch),
                            'config_args.json'),
               'r',
               encoding='utf-8-sig') as i:
         args.__dict__.update(json.load(i))
     tokenizer = AutoTokenizer.from_pretrained(
-        os.path.join('checkpoint', name, str(args.current_epoch)))
+        os.path.join('checkpoint', name, str(epoch)))
 
     if args.accelerator.distributed_type == DistributedType.DEEPSPEED:
         _ = model.load_checkpoint(os.path.join(ckpt_dir, name), epoch)
     else:
         model = AutoModelForCausalLM.from_pretrained(
-            os.path.join(ckpt_dir, name, str(args.current_epoch)))
+            os.path.join(ckpt_dir, name, str(epoch)))
     return args, model, tokenizer
 
 
