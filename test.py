@@ -158,6 +158,7 @@ def main():
 
     # Data Parameters
     parser.add_argument('--data_dir', type=str, default='data')
+    parser.add_argument('--checkpoint_dir', type=str, default='')
     parser.add_argument('--max_len', type=int, default=2048)
 
     # Model Parameters

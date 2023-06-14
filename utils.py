@@ -7,6 +7,7 @@ from glob import glob
 import nvidia_smi
 from accelerate import DistributedType
 from transformers import AutoModelForCausalLM, AutoTokenizer
+from peft import PeftModel, PeftConfig
 
 
 def str2bool(v):
@@ -59,8 +60,7 @@ def load_checkpoint(args, model, name, epoch):
             '[!] You should input appropriate checkpoint name at argument "name"'
         )
 
-    with open(os.path.join('checkpoint', name, str(epoch),
-                           'config_args.json'),
+    with open(os.path.join('checkpoint', name, str(epoch), 'config_args.json'),
               'r',
               encoding='utf-8-sig') as i:
         args.__dict__.update(json.load(i))
@@ -112,7 +112,7 @@ def save_checkpoint(args, model, tokenizer, name):
 
 def load_best_checkpoint(args, name):
     ckpt_dir = os.path.join(args.checkpoint_dir, 'checkpoint')
-    if not os.path.isdir(os.path.join(ckpt_dir, name)):
+    if not os.path.isdir(os.path.join(ckpt_dir, 'BEST_' + name)):
         raise ValueError(
             '[!] You should input appropriate checkpoint name at argument "name"'
         )
@@ -121,10 +121,21 @@ def load_best_checkpoint(args, name):
               'r',
               encoding='utf-8-sig') as i:
         args.__dict__.update(json.load(i))
+
     tokenizer = AutoTokenizer.from_pretrained(
         os.path.join(ckpt_dir, 'BEST_' + name))
-    model = AutoModelForCausalLM.from_pretrained(
-        os.path.join(ckpt_dir, 'BEST_' + name))
+
+    if any([val for key, val in args.__dict__.items() if 'use_peft' in key]):
+        peft_config = PeftConfig.from_pretrained(
+            os.path.join(ckpt_dir, 'BEST_' + name))
+        model = AutoModelForCausalLM.from_pretrained(
+            peft_config.base_model_name_or_path)
+        model = PeftModel.from_pretrained(
+            model, os.path.join(ckpt_dir, 'BEST_' + name))
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            os.path.join(ckpt_dir, 'BEST_' + name))
+
     return args, model, tokenizer
 
 

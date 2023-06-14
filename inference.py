@@ -12,8 +12,7 @@ from accelerate import Accelerator, DistributedType
 from transformers import (AutoConfig, AutoModelForCausalLM, AutoTokenizer,
                           logging, pipeline, set_seed)
 
-from model import GPTNeoXPrefixForCausalLM
-from utils import load_best_checkpoint, str2bool
+from utils import load_best_checkpoint
 
 # from deepspeed.utils.zero_to_fp32 import load_state_dict_from_zero_checkpoint
 
@@ -35,24 +34,9 @@ def inference(args):
                                              revision=args.revision)
 
     # Model
-    if args.p_tuning:
-        args.config.pre_seq_len = args.pre_seq_len
-        args.config.prefix_projection = args.prefix_projection
-        args.config.prefix_hidden_size = args.prefix_hidden_size
-        args.config.hidden_dropout_prob = args.hidden_dropout_prob
-        model = GPTNeoXPrefixForCausalLM.from_pretrained(
-            args.pretrained_model, revision=args.revision, config=args.config)
-    else:
-        model = AutoModelForCausalLM.from_pretrained(args.pretrained_model,
-                                                     revision=args.revision)
-
-    if args.add_adapter:
-        assert args.saved_model
-        args.adapter_name = model.load_adapter(
-            os.path.join('checkpoint', 'BEST_adapter_' + args.saved_model))
-        model.set_active_adapters(args.adapter_name)
-        print('[!] Saved checkpoint is loaded')
-    elif args.saved_model:
+    model = AutoModelForCausalLM.from_pretrained(args.pretrained_model,
+                                                 revision=args.revision)
+    if args.saved_model:
         _, model, tokenizer = load_best_checkpoint(args, args.saved_model)
         print('[*] Saved checkpoint is loaded')
 
@@ -127,48 +111,31 @@ def inference(args):
             print()
 
 
-# examples:
-
-# 많이 힘들었냐는 누군가의 질문에 쉽사리 대답하지 못할 때가 많아요. 길었던 수많은 밤들을 어떠한 말로도 설명할 수가 없을 것 같아서.
-# 양치기 산티아고가 양떼를 데리고 버려진 낡은 교회 앞에 다다랐을 때는 날이 저물고 있었다. 지붕은 무너진지 오래였고, 성물 보관소 자리에는 커다란 무화과나무 한 그루가 서 있었다. 그는 그곳에서 하룻밤을 보내기로 했다. 양들을 부서진 문을 통해 안으로 들여보낸 뒤, 도망치지 못하도록 문에 널빤지를 댔다. 근처에 늑대는 없었지만, 밤사이 양이 한마리라도 도망치게 되면 그 다음날은 온종일 잃어버린 양을 찾아다녀야 할 것이기 때문이었다.
-# '''
-# 우리는 모두 땅에서 태어났다.
-# 햇살이 문득 따사로운 날들이 있다.
-# 이것은 어느 긴긴 밤에 시작된 이야기다.
-# '''
-
-# poetry examples:
-# <|title|>\n달이 떴다고 전화를 주시다니요\n\n<|lyrics|>\n세상에\n강변에 달빛이 곱다고\n전화를 다 주시다니요\n
-
-
 def main():
     # python test.py
     parser = argparse.ArgumentParser()
 
     # Data Parameters
     parser.add_argument('--data_dir', type=str, default='data')
-    parser.add_argument('--max_new_tokens', type=int, default=256)
+    parser.add_argument('--checkpoint_dir', type=str, default='')
+    parser.add_argument('--max_new_tokens', type=int, default=128)
 
     # Model Parameters
     parser.add_argument('--pretrained_model',
                         type=str,
                         default='EleutherAI/polyglot-ko-3.8b')
     parser.add_argument('--revision', type=str, default='main')
-    parser.add_argument('--add_adapter', action='store_true')
-    parser.add_argument('--p_tuning', action='store_true')
     parser.add_argument('--saved_model', type=str, default=None)
 
-    # Tuning Parameters
-    parser.add_argument('--pre_seq_len', type=int, default=10)
-    parser.add_argument('--prefix_projection', type=str2bool, default=True)
-    parser.add_argument('--prefix_hidden_size', type=int, default=512)
-    parser.add_argument('--hidden_dropout_prob', type=float, default=.1)
-
     # Multi-process Parameters
-    parser.add_argument('--mixed_precision',
-                        type=str,
-                        default='no',
-                        choices=['no', 'fp16', 'bf16'])
+    parser.add_argument(
+        '--mixed_precision',
+        type=str,
+        default='fp16',
+        choices=["no", "fp16", "bf16", "fp8"],
+        help="Whether to use mixed precision. Choose"
+        "between fp16 and bf16 (bfloat16). Bf16 requires PyTorch >= 1.10."
+        "and an Nvidia Ampere GPU.")
     parser.add_argument('--cpu', action='store_true')
     parser.add_argument('--local_rank', type=int, default=0)
     parser.add_argument('--world_size', type=int, default=1)

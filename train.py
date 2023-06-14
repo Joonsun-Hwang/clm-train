@@ -146,7 +146,7 @@ def train(args):
             'additional_special_tokens']:
         model.resize_token_embeddings(len(tokenizer))
 
-    if args.use_lora:
+    if args.use_peft_lora:
         model = prepare_model_for_int8_training(model)
 
         args.peft_config = LoraConfig(
@@ -334,7 +334,7 @@ def main():
     parser.add_argument('--patient', type=int, default=3)
 
     # PEFT parameters
-    parser.add_argument('--use_lora', action='store_true')
+    parser.add_argument('--use_peft_lora', action='store_true')
     parser.add_argument('--lora_r', type=int, default=8)
     parser.add_argument('--lora_alpha', type=int, default=16)
     parser.add_argument('--lora_dropout', type=int, default=0.05)
@@ -346,12 +346,6 @@ def main():
     parser.add_argument('--random_seed', type=int, default=1234)
 
     args = parser.parse_args()
-
-    args.train_losses = []
-    args.train_scores = []
-    args.val_losses = []
-    args.val_scores = []
-    args.waiting = 0
 
     os.environ[
         "TOKENIZERS_PARALLELISM"] = "false"  # Avoid tokenizer parallelism deadlock warning
@@ -366,6 +360,12 @@ def main():
 
     # Reproduciblity
     set_seed(args.random_seed)
+
+    args.train_losses = []
+    args.train_scores = []
+    args.val_losses = []
+    args.val_scores = []
+    args.waiting = 0
 
     args.gradient_accumulation_steps = 1
     if args.accelerator.state.deepspeed_plugin is not None:
